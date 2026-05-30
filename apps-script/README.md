@@ -122,7 +122,7 @@ Generated PDFs are saved into the configured Drive folder:
 DRIVE_OUTPUT_FOLDER_ID=...
 ```
 
-Filenames use the invoice period end date, workbook name, and invoice number:
+Filenames use the invoice period start date, workbook name, and invoice number:
 
 ```text
 YYYY-MM-DD - Workbook Name - Invoice 4.pdf

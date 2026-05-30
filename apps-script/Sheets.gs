@@ -105,7 +105,7 @@ function exportInvoicePdf(spreadsheet, invoice) {
 
 function buildInvoiceFilename(spreadsheet, invoice) {
   return [
-    dateKey(invoice.endDate),
+    dateKey(invoice.startDate),
     sanitizeFilename(spreadsheet.getName()),
     'Invoice ' + invoice.invoiceNumber
   ].join(' - ') + '.pdf';

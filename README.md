@@ -96,7 +96,7 @@ PLEASE CONFIRM
 
 The script infers the invoice period from the dated lines and marks dates with time values as worked. Invoice numbers are tracked by period in an `Invoice Index` sheet tab so corrections reuse the original invoice number.
 
-Generated PDFs are saved to `DRIVE_OUTPUT_FOLDER_ID` with date-based filenames:
+Generated PDFs are saved to `DRIVE_OUTPUT_FOLDER_ID` with start-date-based filenames:
 
 ```text
 YYYY-MM-DD - Workbook Name - Invoice 4.pdf
