@@ -121,6 +121,22 @@ function sendTelegramText(chatId, text) {
   return parseJsonResponse(response, 'Telegram text send');
 }
 
+function sendTelegramChatAction(chatId, action) {
+  const url = getTelegramApiUrl('sendChatAction');
+
+  const response = UrlFetchApp.fetch(url, {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify({
+      chat_id: chatId,
+      action: action
+    }),
+    muteHttpExceptions: true
+  });
+
+  return parseJsonResponse(response, 'Telegram chat action send');
+}
+
 function getTelegramApiUrl(method) {
   return 'https://api.telegram.org/bot' +
     getRequiredProperty(CONFIG_KEYS.TELEGRAM_BOT_TOKEN) +

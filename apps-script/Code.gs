@@ -57,6 +57,8 @@ function processInboundMessage(message) {
       return;
     }
 
+    sendTelegramChatAction(message.chatId, 'typing');
+
     const invoice = parseInvoiceRequest(message.text);
     const spreadsheet = openInvoiceSpreadsheet();
 
@@ -65,7 +67,10 @@ function processInboundMessage(message) {
 
     SpreadsheetApp.flush();
 
+    sendTelegramChatAction(message.chatId, 'upload_document');
+
     const pdfBlob = exportInvoicePdf(spreadsheet, invoice);
+    sendTelegramChatAction(message.chatId, 'upload_document');
     const telegramResult = sendTelegramDocument(message.chatId, pdfBlob);
 
     markMessageProcessed(message.id);
