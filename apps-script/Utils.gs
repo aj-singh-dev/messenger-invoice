@@ -127,6 +127,15 @@ function formatDateForFilename(date) {
   return Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd');
 }
 
+function sanitizeFilename(value) {
+  const cleaned = String(value || 'Invoice')
+    .replace(/[\\/:*?"<>|#%\{\}~&]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return cleaned || 'Invoice';
+}
+
 function formatInvoicePeriod(startDate, endDate) {
   return Utilities.formatDate(startDate, Session.getScriptTimeZone(), 'dd/MM/yyyy') +
     ' - ' +

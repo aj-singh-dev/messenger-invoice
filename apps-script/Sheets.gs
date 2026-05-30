@@ -100,17 +100,14 @@ function exportInvoicePdf(spreadsheet, invoice) {
   return response
     .getBlob()
     .setContentType('application/pdf')
-    .setName(buildInvoiceFilename(invoice));
+    .setName(buildInvoiceFilename(spreadsheet, invoice));
 }
 
-function buildInvoiceFilename(invoice) {
+function buildInvoiceFilename(spreadsheet, invoice) {
   return [
-    'Invoice',
-    invoice.invoiceNumber,
-    formatDateForFilename(invoice.startDate),
-    'to',
-    formatDateForFilename(invoice.endDate)
-  ].join('-') + '.pdf';
+    sanitizeFilename(spreadsheet.getName()),
+    invoice.invoiceNumber
+  ].join(' - ') + '.pdf';
 }
 
 function getOrCreateSheet(spreadsheet, name) {
