@@ -15,6 +15,7 @@ Telegram should not point directly at the Apps Script URL. Apps Script Web Apps 
 - `InvoiceIndex.gs` - period-to-invoice-number index logic.
 - `Sheets.gs` - Google Sheet writes and PDF export.
 - `Email.gs` - per-chat email recipient state, send confirmation buttons, and PDF email delivery.
+- `Reminder.gs` - weekly Telegram reminder subscriptions and time trigger management.
 - `Utils.gs` - logging, cache, property, response, and date helpers.
 - `appsscript.json` - Apps Script manifest and OAuth scopes.
 - `.clasp.example.json` - Public-safe example for linking this folder to an Apps Script project.
@@ -143,12 +144,19 @@ Email sending requires the Apps Script send-mail scope:
 https://www.googleapis.com/auth/script.send_mail
 ```
 
+Weekly reminders create an Apps Script time trigger and require:
+
+```text
+https://www.googleapis.com/auth/script.scriptapp
+```
+
 The bot also supports:
 
 - `/start` - returns the expected invoice request format.
 - `/help` - returns the same help text as `/start`.
 - `/id` - returns the Telegram chat ID for allowlisting.
 - `/email` - shows, sets, or clears the email recipient for this chat.
+- `/reminder` - shows, enables, or disables weekly Telegram reminders for this chat.
 - `/version` - returns the deployed bot version.
 - `/auth` - admin-only Google authorization link.
 
@@ -181,6 +189,28 @@ EMAIL_SENDER_NAME=Invoice Sender
 ```
 
 When set, Apps Script asks Google to use this display name on outgoing invoice emails.
+
+## Weekly Reminders
+
+Turn on a Sunday evening reminder for the current Telegram chat:
+
+```text
+/reminder on
+```
+
+Check reminder status:
+
+```text
+/reminder
+```
+
+Turn it off:
+
+```text
+/reminder off
+```
+
+The first `/reminder on` creates an Apps Script weekly time trigger for `sendWeeklyInvoiceReminders`. Reminder chat IDs are stored in the `REMINDER_CHAT_IDS` script property.
 
 ## Google Sheet Requirements
 

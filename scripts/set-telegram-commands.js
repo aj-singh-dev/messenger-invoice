@@ -8,6 +8,7 @@ const commands = [
   { command: 'help', description: 'Show help' },
   { command: 'id', description: 'Show this chat ID' },
   { command: 'email', description: 'Set or show email recipient' },
+  { command: 'reminder', description: 'Set weekly invoice reminder' },
   { command: 'version', description: 'Show bot version' },
   { command: 'auth', description: 'Show Google authorization link' }
 ];

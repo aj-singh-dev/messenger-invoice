@@ -177,6 +177,28 @@ function formatInvoicePeriod(startDate, endDate) {
     Utilities.formatDate(endDate, Session.getScriptTimeZone(), 'dd/MM/yyyy');
 }
 
+function formatFriendlyDateRange(startDate, endDate) {
+  const timezone = Session.getScriptTimeZone();
+  const sameYear = startDate.getFullYear() === endDate.getFullYear();
+  const sameMonth = sameYear && startDate.getMonth() === endDate.getMonth();
+
+  if (sameMonth) {
+    return Utilities.formatDate(startDate, timezone, 'd') +
+      ' - ' +
+      Utilities.formatDate(endDate, timezone, 'd MMMM yyyy');
+  }
+
+  if (sameYear) {
+    return Utilities.formatDate(startDate, timezone, 'd MMMM') +
+      ' - ' +
+      Utilities.formatDate(endDate, timezone, 'd MMMM yyyy');
+  }
+
+  return Utilities.formatDate(startDate, timezone, 'd MMMM yyyy') +
+    ' - ' +
+    Utilities.formatDate(endDate, timezone, 'd MMMM yyyy');
+}
+
 function dateKey(date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');

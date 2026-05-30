@@ -88,6 +88,13 @@ function processInboundMessage(message) {
       return;
     }
 
+    if (command === '/reminder') {
+      handleReminderCommand(message);
+      markMessageProcessed(message.id);
+      logInvoiceRun({ message: message, status: 'reminder_updated' });
+      return;
+    }
+
     sendTelegramChatAction(message.chatId, 'typing');
 
     const invoice = parseInvoiceRequest(message.text);
@@ -104,7 +111,8 @@ function processInboundMessage(message) {
     saveInvoicePdf(spreadsheet, invoice, pdfBlob);
     sendTelegramChatAction(message.chatId, 'upload_document');
     const telegramResult = sendTelegramDocument(message.chatId, pdfBlob);
-    sendEmailOffer(message.chatId, invoice);
+    sendInvoiceSuccessSummary(message.chatId, invoice, pdfBlob.getName());
+    sendDelayedEmailOffer(message.chatId, invoice);
 
     markMessageProcessed(message.id);
     logInvoiceRun({
@@ -168,6 +176,19 @@ function processCallbackQuery(callbackQuery) {
     }
     throw error;
   }
+}
+
+function sendDelayedEmailOffer(chatId, invoice) {
+  sendTelegramChatAction(chatId, 'typing');
+  Utilities.sleep(500);
+  sendEmailOffer(chatId, invoice);
+}
+
+function sendInvoiceSuccessSummary(chatId, invoice) {
+  sendTelegramText(chatId, [
+    'Done. I\'ve created Invoice ' + invoice.invoiceNumber + ' for ' + formatFriendlyDateRange(invoice.startDate, invoice.endDate) + '.',
+    ''
+  ].join('\n'));
 }
 
 function testParseInvoiceRequest() {

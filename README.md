@@ -106,6 +106,8 @@ Corrections for an indexed period replace the previously indexed PDF in that fol
 
 Set an email recipient from Telegram with `/email name@example.com`. After each PDF is generated, the bot asks whether to email that saved PDF to the configured recipient.
 
+Turn on a weekly Telegram reminder with `/reminder on`. The reminder asks the chat to send the week's working days every Sunday evening.
+
 ## Updating Cloudflare Worker Code
 
 Use the source in:
@@ -135,6 +137,7 @@ Apps Script Script Properties:
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_WEBHOOK_SECRET`
 - `TELEGRAM_ALLOWED_CHAT_IDS` optional
+- `REMINDER_CHAT_IDS` optional, managed by `/reminder`
 - `DRIVE_OUTPUT_FOLDER_ID`
 - all sheet/cell/rate properties listed in `apps-script/README.md`
 

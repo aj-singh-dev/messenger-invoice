@@ -122,6 +122,7 @@ function buildStartMessage() {
     '',
     'Send /id to see this chat ID for allowlisting.',
     'Send /email name@example.com to set the email recipient.',
+    'Send /reminder on to get a weekly reminder.',
     'Send /version to see the deployed bot version.',
     'Admins can send /auth to get a Google authorization link.'
   ].join('\n');
