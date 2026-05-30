@@ -43,10 +43,10 @@ function processInboundMessage(message) {
     }
 
     const command = normalizeTelegramCommand(message.text);
-    if (command === '/start') {
+    if (command === '/start' || command === '/help') {
       sendTelegramText(message.chatId, buildStartMessage());
       markMessageProcessed(message.id);
-      logInvoiceRun({ message: message, status: 'start_help_sent' });
+      logInvoiceRun({ message: message, status: command === '/help' ? 'help_sent' : 'start_help_sent' });
       return;
     }
 
@@ -54,6 +54,13 @@ function processInboundMessage(message) {
       sendTelegramText(message.chatId, 'Telegram chat ID: ' + message.chatId);
       markMessageProcessed(message.id);
       logInvoiceRun({ message: message, status: 'chat_id_sent' });
+      return;
+    }
+
+    if (command === '/version') {
+      sendTelegramText(message.chatId, 'Messenger Invoice Bot\nVersion: ' + APP_VERSION);
+      markMessageProcessed(message.id);
+      logInvoiceRun({ message: message, status: 'version_sent' });
       return;
     }
 

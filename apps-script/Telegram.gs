@@ -85,7 +85,8 @@ function buildStartMessage() {
     '19/05 OFF',
     '20/05 10:00',
     '',
-    'Send /id to see this chat ID for allowlisting.'
+    'Send /id to see this chat ID for allowlisting.',
+    'Send /version to see the deployed bot version.'
   ].join('\n');
 }
 

@@ -19,6 +19,7 @@ Cloudflare is required because Apps Script Web Apps return a Google `302` redire
 
 - `apps-script/` - Google Apps Script code, manifest, parser tests, and Apps Script deployment notes.
 - `cloudflare-worker/` - Cloudflare Worker relay code and Worker deployment notes.
+- `scripts/` - reusable Telegram maintenance scripts.
 - `.env` - local checklist/source of truth for config values. Apps Script and Cloudflare do not read this file automatically.
 - `.env.example` - public-safe example config.
 - `docs/` - private planning and setup notes. This folder is gitignored.
@@ -104,6 +105,18 @@ cloudflare-worker/worker.js
 ```
 
 Deploy it in Cloudflare Dashboard under **Workers & Pages > YOUR_WORKER_NAME > Edit code**.
+
+## Maintenance Scripts
+
+Run from the project root:
+
+```sh
+node scripts/get-telegram-webhook-info.js
+node scripts/set-telegram-commands.js
+node scripts/set-telegram-webhook.js https://YOUR_WORKER_NAME.YOUR_WORKERS_SUBDOMAIN.workers.dev
+```
+
+See `scripts/README.md`.
 
 ## Config Locations
 
