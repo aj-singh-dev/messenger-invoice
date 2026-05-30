@@ -96,6 +96,14 @@ PLEASE CONFIRM
 
 The script infers the invoice period from the dated lines and marks dates with time values as worked. Invoice numbers are tracked by period in an `Invoice Index` sheet tab so corrections reuse the original invoice number.
 
+Generated PDFs are saved to `DRIVE_OUTPUT_FOLDER_ID` with date-based filenames:
+
+```text
+YYYY-MM-DD - Workbook Name - Invoice 4.pdf
+```
+
+Corrections for an indexed period replace the previously indexed PDF in that folder.
+
 ## Updating Cloudflare Worker Code
 
 Use the source in:
@@ -125,6 +133,7 @@ Apps Script Script Properties:
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_WEBHOOK_SECRET`
 - `TELEGRAM_ALLOWED_CHAT_IDS` optional
+- `DRIVE_OUTPUT_FOLDER_ID`
 - all sheet/cell/rate properties listed in `apps-script/README.md`
 
 Cloudflare Worker variables:

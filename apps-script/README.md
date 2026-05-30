@@ -39,6 +39,7 @@ Set these in Apps Script under **Project Settings > Script Properties**.
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_WEBHOOK_SECRET=choose-a-secret-string
 SPREADSHEET_ID=...
+DRIVE_OUTPUT_FOLDER_ID=...
 INPUT_SHEET_NAME=...
 INVOICE_SHEET_NAME=...
 INVOICE_NUMBER_CELL=...
@@ -60,9 +61,12 @@ Optional:
 
 ```text
 TELEGRAM_ALLOWED_CHAT_IDS=123456789,-1001234567890
+TELEGRAM_ADMIN_CHAT_IDS=123456789
 ```
 
 If `TELEGRAM_ALLOWED_CHAT_IDS` is set, only those Telegram chats can use the bot. Send `/id` to the bot to get the current chat ID.
+
+If `TELEGRAM_ADMIN_CHAT_IDS` is set, those chats can use `/auth` to request a Google authorization URL. Keep this restricted to the developer/admin chat.
 
 ## Telegram Message Format
 
@@ -108,10 +112,37 @@ Invoice numbers are resolved through an `Invoice Index` sheet tab.
 
 This prevents corrections to older weeks from accidentally incrementing the invoice sequence.
 
+The `Invoice Index` tab also stores the saved PDF's Drive file ID and filename. Corrections for an indexed period replace the previous indexed PDF inside `DRIVE_OUTPUT_FOLDER_ID`.
+
+## PDF Saving
+
+Generated PDFs are saved into the configured Drive folder:
+
+```text
+DRIVE_OUTPUT_FOLDER_ID=...
+```
+
+Filenames use the invoice period end date, workbook name, and invoice number:
+
+```text
+YYYY-MM-DD - Workbook Name - Invoice 4.pdf
+```
+
+The code only creates and replaces PDFs inside `DRIVE_OUTPUT_FOLDER_ID`. If an indexed Drive file ID no longer belongs to that folder, the script refuses to replace it.
+
+Creating and trashing files requires the Apps Script manifest to use the Drive write scope:
+
+```text
+https://www.googleapis.com/auth/drive
+```
+
 The bot also supports:
 
 - `/start` - returns the expected invoice request format.
+- `/help` - returns the same help text as `/start`.
 - `/id` - returns the Telegram chat ID for allowlisting.
+- `/version` - returns the deployed bot version.
+- `/auth` - admin-only Google authorization link.
 
 ## Google Sheet Requirements
 
@@ -120,6 +151,7 @@ The sheet needs:
 - One input/calculation tab identified by `INPUT_SHEET_NAME`.
 - One PDF/export tab identified by `INVOICE_SHEET_NAME`.
 - Input cells for invoice number, period start, period end, and day-rate cells.
+- An `Invoice Index` tab will be created automatically if it does not exist.
 
 `INPUT_SHEET_NAME` and `INVOICE_SHEET_NAME` can be either tab names or numeric Google Sheets `gid` values.
 
@@ -143,16 +175,17 @@ npx @google/clasp push --force
 
 5. Set all required Script Properties manually in Apps Script under **Project Settings > Script Properties**.
 6. Run `testParseInvoiceRequest` once in Apps Script to authorize the script and test the parser.
-7. Deploy or update the Web App:
+7. Run `testAuthorizeDriveOutputFolder` once in Apps Script after setting `DRIVE_OUTPUT_FOLDER_ID`. This creates and immediately trashes a small test file in the configured folder so Google prompts for Drive write authorization.
+8. Deploy or update the Web App:
    - Execute as: `Me`
    - Who has access: `Anyone`
-8. Copy the Web App URL.
-9. Set `APPS_SCRIPT_URL` in Cloudflare Worker variables to that Web App URL.
-10. Set Telegram's webhook to the Cloudflare Worker URL, not the Apps Script URL. See `../cloudflare-worker/README.md`.
-11. Send `/start` to the bot.
-12. Send `/id` and optionally add the returned chat ID to `TELEGRAM_ALLOWED_CHAT_IDS`.
-13. Seed `Invoice Index` once if needed by sending the first historical/correction message with an explicit invoice number.
-14. Paste the smoke-test invoice request and confirm the sheet updates and the bot replies with the PDF.
+9. Copy the Web App URL.
+10. Set `APPS_SCRIPT_URL` in Cloudflare Worker variables to that Web App URL.
+11. Set Telegram's webhook to the Cloudflare Worker URL, not the Apps Script URL. See `../cloudflare-worker/README.md`.
+12. Send `/start` to the bot.
+13. Send `/id` and optionally add the returned chat ID to `TELEGRAM_ALLOWED_CHAT_IDS`.
+14. Seed `Invoice Index` once if needed by sending the first historical/correction message with an explicit invoice number.
+15. Paste the smoke-test invoice request and confirm the sheet updates and the bot replies with the PDF.
 
 ## Webhook Secret Note
 

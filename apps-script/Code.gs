@@ -64,6 +64,17 @@ function processInboundMessage(message) {
       return;
     }
 
+    if (command === '/auth') {
+      if (!isAdminTelegramChat(message.chatId)) {
+        throw new Error('Only admin chats can request the Google authorization link.');
+      }
+
+      sendTelegramText(message.chatId, buildAuthorizationMessage());
+      markMessageProcessed(message.id);
+      logInvoiceRun({ message: message, status: 'auth_link_sent' });
+      return;
+    }
+
     sendTelegramChatAction(message.chatId, 'typing');
 
     const invoice = parseInvoiceRequest(message.text);
@@ -77,6 +88,7 @@ function processInboundMessage(message) {
     sendTelegramChatAction(message.chatId, 'upload_document');
 
     const pdfBlob = exportInvoicePdf(spreadsheet, invoice);
+    saveInvoicePdf(spreadsheet, invoice, pdfBlob);
     sendTelegramChatAction(message.chatId, 'upload_document');
     const telegramResult = sendTelegramDocument(message.chatId, pdfBlob);
 
@@ -96,7 +108,7 @@ function processInboundMessage(message) {
       error: String(error.message || error)
     });
     try {
-      sendTelegramText(message.chatId, 'I could not create the invoice: ' + String(error.message || error));
+      sendTelegramText(message.chatId, buildErrorMessageForChat(message.chatId, error));
     } catch (sendError) {
       console.error('Failed to send Telegram error message: ' + String(sendError.message || sendError));
     }
@@ -112,4 +124,12 @@ function testParseInvoiceRequest() {
     endDate: parsed.endDate,
     workedDays: parsed.workedDays
   }));
+}
+
+function testAuthorizeDriveOutputFolder() {
+  const folder = DriveApp.getFolderById(getRequiredProperty(CONFIG_KEYS.DRIVE_OUTPUT_FOLDER_ID));
+  const file = folder.createFile('messenger-invoice-auth-test.txt', 'Authorization test file. Safe to delete.');
+  file.setTrashed(true);
+
+  console.log('Drive output folder authorization OK: ' + folder.getName());
 }

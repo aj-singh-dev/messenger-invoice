@@ -281,21 +281,36 @@ function createFakeIndexSheet(rows) {
     getLastRow() {
       return rows.length;
     },
+    getLastColumn() {
+      return rows.length > 0 ? rows[0].length : 0;
+    },
     appendRow(row) {
       rows.push(row);
     },
+    insertColumnsBefore(column, howMany) {
+      rows.forEach((row) => {
+        for (let index = 0; index < howMany; index += 1) {
+          row.splice(column - 1, 0, '');
+        }
+      });
+    },
     getRange(row, column, rowCount, columnCount) {
+      const effectiveRowCount = rowCount || 1;
+      const effectiveColumnCount = columnCount || 1;
       return {
         getValues() {
-          return rows.slice(row - 1, row - 1 + rowCount).map((sourceRow) => {
+          return rows.slice(row - 1, row - 1 + effectiveRowCount).map((sourceRow) => {
             const values = [];
-            for (let index = 0; index < columnCount; index += 1) {
+            for (let index = 0; index < effectiveColumnCount; index += 1) {
               values.push(sourceRow[column - 1 + index]);
             }
             return values;
           });
         },
         setValue(value) {
+          while (!rows[row - 1]) {
+            rows.push([]);
+          }
           rows[row - 1][column - 1] = value;
         }
       };

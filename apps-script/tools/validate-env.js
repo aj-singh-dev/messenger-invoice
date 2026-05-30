@@ -8,6 +8,7 @@ const required = [
   'TELEGRAM_BOT_TOKEN',
   'TELEGRAM_WEBHOOK_SECRET',
   'SPREADSHEET_ID',
+  'DRIVE_OUTPUT_FOLDER_ID',
   'INPUT_SHEET_NAME',
   'INVOICE_SHEET_NAME',
   'INVOICE_NUMBER_CELL',
@@ -39,19 +40,28 @@ if (env.SPREADSHEET_ID && !/^[a-zA-Z0-9_-]+$/.test(env.SPREADSHEET_ID)) {
   console.error('invalid - SPREADSHEET_ID should look like a Google file id');
 }
 
+if (env.DRIVE_OUTPUT_FOLDER_ID && !/^[a-zA-Z0-9_-]+$/.test(env.DRIVE_OUTPUT_FOLDER_ID)) {
+  failures += 1;
+  console.error('invalid - DRIVE_OUTPUT_FOLDER_ID should look like a Google Drive folder id');
+}
+
 if (env.TELEGRAM_BOT_TOKEN && !/^\d+:[A-Za-z0-9_-]+$/.test(env.TELEGRAM_BOT_TOKEN)) {
   failures += 1;
   console.error('invalid - TELEGRAM_BOT_TOKEN should look like a BotFather token');
 }
 
-if (env.TELEGRAM_ALLOWED_CHAT_IDS) {
-  env.TELEGRAM_ALLOWED_CHAT_IDS.split(',').forEach((chatId) => {
+['TELEGRAM_ALLOWED_CHAT_IDS', 'TELEGRAM_ADMIN_CHAT_IDS'].forEach((key) => {
+  if (!env[key]) {
+    return;
+  }
+
+  env[key].split(',').forEach((chatId) => {
     if (!/^-?\d+$/.test(chatId.trim())) {
       failures += 1;
-      console.error(`invalid - TELEGRAM_ALLOWED_CHAT_IDS contains a non-numeric chat id: ${chatId}`);
+      console.error(`invalid - ${key} contains a non-numeric chat id: ${chatId}`);
     }
   });
-}
+});
 
 [
   'INVOICE_NUMBER_CELL',

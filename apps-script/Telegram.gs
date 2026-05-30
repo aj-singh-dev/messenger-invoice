@@ -59,6 +59,22 @@ function isAllowedTelegramChat(chatId) {
     .indexOf(normalizedChatId) !== -1;
 }
 
+function isAdminTelegramChat(chatId) {
+  const admins = getOptionalProperty(CONFIG_KEYS.TELEGRAM_ADMIN_CHAT_IDS);
+  if (!admins) {
+    return false;
+  }
+
+  const normalizedChatId = String(chatId);
+  return admins
+    .split(',')
+    .map(function(value) {
+      return value.trim();
+    })
+    .filter(Boolean)
+    .indexOf(normalizedChatId) !== -1;
+}
+
 function normalizeTelegramCommand(text) {
   const firstToken = String(text || '').trim().split(/\s+/)[0].toLowerCase();
   return firstToken.replace(/@[\w_]+$/, '');
@@ -86,7 +102,8 @@ function buildStartMessage() {
     '20/05 10:00',
     '',
     'Send /id to see this chat ID for allowlisting.',
-    'Send /version to see the deployed bot version.'
+    'Send /version to see the deployed bot version.',
+    'Admins can send /auth to get a Google authorization link.'
   ].join('\n');
 }
 

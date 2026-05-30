@@ -8,6 +8,9 @@ function resolveInvoiceNumber(spreadsheet, invoice) {
 
     if (existing) {
       invoice.invoiceNumber = existing.invoiceNumber;
+      invoice.indexRow = existing.row;
+      invoice.driveFileId = existing.driveFileId;
+      invoice.driveFilename = existing.driveFilename;
       touchInvoiceIndexEntry(indexSheet, existing.row);
       return;
     }
@@ -47,6 +50,7 @@ function getOrCreateInvoiceIndexSheet(spreadsheet) {
 
 function ensureInvoiceIndexHeader(sheet) {
   if (sheet.getLastRow() > 0) {
+    ensureInvoiceIndexColumns(sheet);
     return;
   }
 
@@ -54,9 +58,33 @@ function ensureInvoiceIndexHeader(sheet) {
     'Period Start',
     'Period End',
     'Invoice Number',
+    'Drive File ID',
+    'Drive Filename',
     'Created At',
     'Updated At'
   ]);
+}
+
+function ensureInvoiceIndexColumns(sheet) {
+  const headerRange = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 7));
+  const headers = headerRange.getValues()[0];
+
+  if (headers[INVOICE_INDEX_COLUMNS.DRIVE_FILE_ID - 1] === 'Drive File ID' &&
+      headers[INVOICE_INDEX_COLUMNS.DRIVE_FILENAME - 1] === 'Drive Filename') {
+    return;
+  }
+
+  if (headers[3] === 'Created At' && headers[4] === 'Updated At') {
+    sheet.insertColumnsBefore(4, 2);
+    sheet.getRange(1, INVOICE_INDEX_COLUMNS.DRIVE_FILE_ID).setValue('Drive File ID');
+    sheet.getRange(1, INVOICE_INDEX_COLUMNS.DRIVE_FILENAME).setValue('Drive Filename');
+    return;
+  }
+
+  sheet.getRange(1, INVOICE_INDEX_COLUMNS.DRIVE_FILE_ID).setValue('Drive File ID');
+  sheet.getRange(1, INVOICE_INDEX_COLUMNS.DRIVE_FILENAME).setValue('Drive Filename');
+  sheet.getRange(1, INVOICE_INDEX_COLUMNS.CREATED_AT).setValue('Created At');
+  sheet.getRange(1, INVOICE_INDEX_COLUMNS.UPDATED_AT).setValue('Updated At');
 }
 
 function findInvoiceIndexEntry(sheet, startDate, endDate) {
@@ -90,6 +118,9 @@ function upsertInvoiceIndexEntry(sheet, invoice) {
   const existing = findInvoiceIndexEntry(sheet, invoice.startDate, invoice.endDate);
   if (existing) {
     sheet.getRange(existing.row, INVOICE_INDEX_COLUMNS.INVOICE_NUMBER).setValue(invoice.invoiceNumber);
+    invoice.indexRow = existing.row;
+    invoice.driveFileId = existing.driveFileId;
+    invoice.driveFilename = existing.driveFilename;
     touchInvoiceIndexEntry(sheet, existing.row);
     return;
   }
@@ -103,9 +134,12 @@ function appendInvoiceIndexEntry(sheet, invoice) {
     invoice.startDate,
     invoice.endDate,
     invoice.invoiceNumber,
+    invoice.driveFileId || '',
+    invoice.driveFilename || '',
     now,
     now
   ]);
+  invoice.indexRow = sheet.getLastRow();
 }
 
 function touchInvoiceIndexEntry(sheet, row) {
@@ -118,7 +152,7 @@ function readInvoiceIndexEntries(sheet) {
     return [];
   }
 
-  const values = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
+  const values = sheet.getRange(2, 1, lastRow - 1, 7).getValues();
   const entries = [];
 
   values.forEach(function(row, index) {
@@ -136,11 +170,27 @@ function readInvoiceIndexEntries(sheet) {
       endDate: endDate,
       startKey: dateKey(startDate),
       endKey: dateKey(endDate),
-      invoiceNumber: invoiceNumber
+      invoiceNumber: invoiceNumber,
+      driveFileId: row[INVOICE_INDEX_COLUMNS.DRIVE_FILE_ID - 1] || '',
+      driveFilename: row[INVOICE_INDEX_COLUMNS.DRIVE_FILENAME - 1] || ''
     });
   });
 
   return entries;
+}
+
+function updateInvoiceIndexDriveFile(spreadsheet, invoice) {
+  const sheet = getOrCreateInvoiceIndexSheet(spreadsheet);
+  const existing = invoice.indexRow ? { row: invoice.indexRow } : findInvoiceIndexEntry(sheet, invoice.startDate, invoice.endDate);
+
+  if (!existing) {
+    appendInvoiceIndexEntry(sheet, invoice);
+    return;
+  }
+
+  sheet.getRange(existing.row, INVOICE_INDEX_COLUMNS.DRIVE_FILE_ID).setValue(invoice.driveFileId || '');
+  sheet.getRange(existing.row, INVOICE_INDEX_COLUMNS.DRIVE_FILENAME).setValue(invoice.driveFilename || '');
+  touchInvoiceIndexEntry(sheet, existing.row);
 }
 
 function normalizeSheetDate(value) {

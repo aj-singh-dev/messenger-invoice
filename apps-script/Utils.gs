@@ -123,6 +123,41 @@ function jsonResponse(value) {
   return HtmlService.createHtmlOutput(JSON.stringify(value));
 }
 
+function buildErrorMessageForChat(chatId, error) {
+  const message = 'I could not create the invoice: ' + String(error.message || error);
+
+  if (!isAdminTelegramChat(chatId) || !isAuthorizationError(error)) {
+    return message;
+  }
+
+  return message + '\n\nAuthorize Google access here:\n' + getAuthorizationUrl();
+}
+
+function buildAuthorizationMessage() {
+  const authInfo = getAuthorizationInfo();
+  const status = authInfo.getAuthorizationStatus();
+
+  if (status === ScriptApp.AuthorizationStatus.NOT_REQUIRED) {
+    return 'Google authorization is already complete.';
+  }
+
+  return 'Authorize Google access here:\n' + authInfo.getAuthorizationUrl();
+}
+
+function getAuthorizationUrl() {
+  return getAuthorizationInfo().getAuthorizationUrl();
+}
+
+function getAuthorizationInfo() {
+  return ScriptApp.getAuthorizationInfo(ScriptApp.AuthMode.FULL);
+}
+
+function isAuthorizationError(error) {
+  const message = String(error && error.message ? error.message : error);
+  return message.indexOf('https://www.googleapis.com/auth/') !== -1 ||
+    /authorization|authori[sz]ation|required permissions|vereiste rechten/i.test(message);
+}
+
 function formatDateForFilename(date) {
   return Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd');
 }
