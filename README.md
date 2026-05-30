@@ -104,6 +104,8 @@ YYYY-MM-DD - Workbook Name - Invoice 4.pdf
 
 Corrections for an indexed period replace the previously indexed PDF in that folder.
 
+Set an email recipient from Telegram with `/email name@example.com`. After each PDF is generated, the bot asks whether to email that saved PDF to the configured recipient.
+
 ## Updating Cloudflare Worker Code
 
 Use the source in:

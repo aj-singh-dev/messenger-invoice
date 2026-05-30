@@ -14,6 +14,12 @@ function doPost(e) {
     }
 
     const payload = JSON.parse(e.postData.contents);
+    const callbackQuery = extractTelegramCallbackQuery(payload);
+    if (callbackQuery) {
+      processCallbackQuery(callbackQuery);
+      return jsonResponse({ ok: true, processed: 1 });
+    }
+
     const message = extractTelegramMessage(payload);
 
     if (!message) {
@@ -75,6 +81,13 @@ function processInboundMessage(message) {
       return;
     }
 
+    if (command === '/email') {
+      handleEmailCommand(message);
+      markMessageProcessed(message.id);
+      logInvoiceRun({ message: message, status: 'email_recipient_updated' });
+      return;
+    }
+
     sendTelegramChatAction(message.chatId, 'typing');
 
     const invoice = parseInvoiceRequest(message.text);
@@ -91,6 +104,7 @@ function processInboundMessage(message) {
     saveInvoicePdf(spreadsheet, invoice, pdfBlob);
     sendTelegramChatAction(message.chatId, 'upload_document');
     const telegramResult = sendTelegramDocument(message.chatId, pdfBlob);
+    sendEmailOffer(message.chatId, invoice);
 
     markMessageProcessed(message.id);
     logInvoiceRun({
@@ -111,6 +125,46 @@ function processInboundMessage(message) {
       sendTelegramText(message.chatId, buildErrorMessageForChat(message.chatId, error));
     } catch (sendError) {
       console.error('Failed to send Telegram error message: ' + String(sendError.message || sendError));
+    }
+    throw error;
+  }
+}
+
+function processCallbackQuery(callbackQuery) {
+  if (isDuplicateMessage(callbackQuery.id)) {
+    return;
+  }
+
+  markMessageProcessing(callbackQuery.id);
+
+  try {
+    if (!isAllowedTelegramChat(callbackQuery.chatId)) {
+      throw new Error('This Telegram chat is not allowed to use this bot.');
+    }
+
+    if (callbackQuery.data.indexOf('email_send|') === 0) {
+      answerTelegramCallbackQuery(callbackQuery.callbackQueryId, 'Sending email...');
+      handleEmailSendCallback(callbackQuery);
+      markMessageProcessed(callbackQuery.id);
+      return;
+    }
+
+    if (callbackQuery.data.indexOf('email_skip|') === 0) {
+      answerTelegramCallbackQuery(callbackQuery.callbackQueryId, 'Skipped');
+      handleEmailSkipCallback(callbackQuery);
+      markMessageProcessed(callbackQuery.id);
+      return;
+    }
+
+    answerTelegramCallbackQuery(callbackQuery.callbackQueryId, 'Unknown action');
+    markMessageProcessed(callbackQuery.id);
+  } catch (error) {
+    clearMessageProcessing(callbackQuery.id);
+    try {
+      answerTelegramCallbackQuery(callbackQuery.callbackQueryId, String(error.message || error));
+      sendTelegramText(callbackQuery.chatId, buildErrorMessageForChat(callbackQuery.chatId, error));
+    } catch (sendError) {
+      console.error('Failed to send Telegram callback error: ' + String(sendError.message || sendError));
     }
     throw error;
   }

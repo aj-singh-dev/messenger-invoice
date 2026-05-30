@@ -22,6 +22,25 @@ function extractTelegramMessage(payload) {
   };
 }
 
+function extractTelegramCallbackQuery(payload) {
+  const update = payload || {};
+  const callbackQuery = update.callback_query;
+
+  if (!callbackQuery || !callbackQuery.message || !callbackQuery.message.chat) {
+    return null;
+  }
+
+  return {
+    id: String(update.update_id) + ':' + String(callbackQuery.id || ''),
+    updateId: update.update_id,
+    callbackQueryId: callbackQuery.id,
+    from: callbackQuery.from && callbackQuery.from.id !== undefined ? String(callbackQuery.from.id) : '',
+    chatId: String(callbackQuery.message.chat.id),
+    messageId: callbackQuery.message.message_id,
+    data: callbackQuery.data || ''
+  };
+}
+
 function validateTelegramWebhook(e) {
   const expectedSecret = getOptionalProperty(CONFIG_KEYS.TELEGRAM_WEBHOOK_SECRET);
   if (!expectedSecret) {
@@ -102,6 +121,7 @@ function buildStartMessage() {
     '20/05 10:00',
     '',
     'Send /id to see this chat ID for allowlisting.',
+    'Send /email name@example.com to set the email recipient.',
     'Send /version to see the deployed bot version.',
     'Admins can send /auth to get a Google authorization link.'
   ].join('\n');
@@ -137,6 +157,58 @@ function sendTelegramText(chatId, text) {
   });
 
   return parseJsonResponse(response, 'Telegram text send');
+}
+
+function sendTelegramTextWithInlineKeyboard(chatId, text, inlineKeyboard) {
+  const url = getTelegramApiUrl('sendMessage');
+
+  const response = UrlFetchApp.fetch(url, {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify({
+      chat_id: chatId,
+      text: text,
+      reply_markup: {
+        inline_keyboard: inlineKeyboard
+      }
+    }),
+    muteHttpExceptions: true
+  });
+
+  return parseJsonResponse(response, 'Telegram inline message send');
+}
+
+function answerTelegramCallbackQuery(callbackQueryId, text) {
+  const url = getTelegramApiUrl('answerCallbackQuery');
+
+  const response = UrlFetchApp.fetch(url, {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify({
+      callback_query_id: callbackQueryId,
+      text: text
+    }),
+    muteHttpExceptions: true
+  });
+
+  return parseJsonResponse(response, 'Telegram callback answer');
+}
+
+function editTelegramMessageText(chatId, messageId, text) {
+  const url = getTelegramApiUrl('editMessageText');
+
+  const response = UrlFetchApp.fetch(url, {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify({
+      chat_id: chatId,
+      message_id: messageId,
+      text: text
+    }),
+    muteHttpExceptions: true
+  });
+
+  return parseJsonResponse(response, 'Telegram message edit');
 }
 
 function sendTelegramChatAction(chatId, action) {

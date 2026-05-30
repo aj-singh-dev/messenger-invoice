@@ -19,7 +19,7 @@ if (!env.TELEGRAM_WEBHOOK_SECRET) {
 requestTelegram('setWebhook', {
   url: workerUrl,
   secret_token: env.TELEGRAM_WEBHOOK_SECRET,
-  allowed_updates: ['message'],
+  allowed_updates: ['message', 'callback_query'],
   drop_pending_updates: true
 })
   .then(({ statusCode, data }) => {

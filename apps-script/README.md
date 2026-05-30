@@ -14,6 +14,7 @@ Telegram should not point directly at the Apps Script URL. Apps Script Web Apps 
 - `Parser.gs` - invoice request parsing for both week/day format and dated roster format.
 - `InvoiceIndex.gs` - period-to-invoice-number index logic.
 - `Sheets.gs` - Google Sheet writes and PDF export.
+- `Email.gs` - per-chat email recipient state, send confirmation buttons, and PDF email delivery.
 - `Utils.gs` - logging, cache, property, response, and date helpers.
 - `appsscript.json` - Apps Script manifest and OAuth scopes.
 - `.clasp.example.json` - Public-safe example for linking this folder to an Apps Script project.
@@ -136,13 +137,50 @@ Creating and trashing files requires the Apps Script manifest to use the Drive w
 https://www.googleapis.com/auth/drive
 ```
 
+Email sending requires the Apps Script send-mail scope:
+
+```text
+https://www.googleapis.com/auth/script.send_mail
+```
+
 The bot also supports:
 
 - `/start` - returns the expected invoice request format.
 - `/help` - returns the same help text as `/start`.
 - `/id` - returns the Telegram chat ID for allowlisting.
+- `/email` - shows, sets, or clears the email recipient for this chat.
 - `/version` - returns the deployed bot version.
 - `/auth` - admin-only Google authorization link.
+
+## Email Sending
+
+Set the email recipient from Telegram:
+
+```text
+/email name@example.com
+```
+
+Show the current recipient:
+
+```text
+/email
+```
+
+Clear it:
+
+```text
+/email clear
+```
+
+After every generated PDF, the bot asks whether to email it and shows the recipient and invoice filename. The Send button emails the saved Drive PDF attachment. The Skip button dismisses the prompt.
+
+Optional script property:
+
+```text
+EMAIL_SENDER_NAME=Invoice Sender
+```
+
+When set, Apps Script asks Google to use this display name on outgoing invoice emails.
 
 ## Google Sheet Requirements
 
