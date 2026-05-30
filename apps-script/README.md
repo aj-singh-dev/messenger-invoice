@@ -9,6 +9,12 @@ Telegram should not point directly at the Apps Script URL. Apps Script Web Apps 
 ## Files
 
 - `Code.gs` - Telegram webhook handlers, parser, Google Sheet update/export, Telegram send helpers.
+- `Config.gs` - shared constants and property names.
+- `Telegram.gs` - Telegram update extraction, command handling helpers, and Telegram API calls.
+- `Parser.gs` - invoice request parsing for both week/day format and dated roster format.
+- `InvoiceIndex.gs` - period-to-invoice-number index logic.
+- `Sheets.gs` - Google Sheet writes and PDF export.
+- `Utils.gs` - logging, cache, property, response, and date helpers.
 - `appsscript.json` - Apps Script manifest and OAuth scopes.
 - `.clasp.example.json` - Public-safe example for linking this folder to an Apps Script project.
 - `.clasp.json` - Local-only clasp config. This file is gitignored because it contains your Apps Script project ID.
@@ -60,6 +66,24 @@ If `TELEGRAM_ALLOWED_CHAT_IDS` is set, only those Telegram chats can use the bot
 
 ## Telegram Message Format
 
+Preferred roster format:
+
+```text
+Hi,
+18/05 OFF
+19/05 OFF
+20/05 10:00
+21/05 10:00
+22/05 11::00
+23/05 10:00
+24/05 11:00
+PLEASE CONFIRM
+```
+
+The parser treats `OFF` as not worked and any time-like value such as `10:00` or `11::00` as worked. Dates without a year use the current year.
+
+The older explicit week/day format is still supported:
+
 ```text
 Invoice week 2026-05-11 to 2026-05-17
 Worked: Mon Tue Wed Thu Fri Sat Sun
@@ -73,7 +97,16 @@ Week 2026-05-11 to 2026-05-17
 Worked: Mon Wed Sat Sun
 ```
 
-If the invoice number is missing, the script uses `LAST_INVOICE_NUMBER + 1` and updates `LAST_INVOICE_NUMBER` when reserving the number.
+## Invoice Numbering
+
+Invoice numbers are resolved through an `Invoice Index` sheet tab.
+
+- If the invoice period already exists in `Invoice Index`, the script reuses that invoice number.
+- If the message includes an explicit invoice number, the script writes or updates the period in `Invoice Index`.
+- If the invoice period is newer than the latest indexed period, the script reserves `LAST_INVOICE_NUMBER + 1`, writes the period to `Invoice Index`, and updates `LAST_INVOICE_NUMBER`.
+- If the index is empty, or the message is for an older unindexed period, the script refuses to guess and asks for an explicit invoice number once.
+
+This prevents corrections to older weeks from accidentally incrementing the invoice sequence.
 
 The bot also supports:
 
@@ -118,7 +151,8 @@ npx @google/clasp push --force
 10. Set Telegram's webhook to the Cloudflare Worker URL, not the Apps Script URL. See `../cloudflare-worker/README.md`.
 11. Send `/start` to the bot.
 12. Send `/id` and optionally add the returned chat ID to `TELEGRAM_ALLOWED_CHAT_IDS`.
-13. Paste the smoke-test invoice request and confirm the sheet updates and the bot replies with the PDF.
+13. Seed `Invoice Index` once if needed by sending the first historical/correction message with an explicit invoice number.
+14. Paste the smoke-test invoice request and confirm the sheet updates and the bot replies with the PDF.
 
 ## Webhook Secret Note
 

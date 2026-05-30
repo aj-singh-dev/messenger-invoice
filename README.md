@@ -77,6 +77,24 @@ Then in Apps Script, update the Web App deployment:
 
 If the Web App URL changes, update `APPS_SCRIPT_URL` in the Cloudflare Worker variables.
 
+## Supported Invoice Messages
+
+Preferred roster format:
+
+```text
+Hi,
+18/05 OFF
+19/05 OFF
+20/05 10:00
+21/05 10:00
+22/05 11::00
+23/05 10:00
+24/05 11:00
+PLEASE CONFIRM
+```
+
+The script infers the invoice period from the dated lines and marks dates with time values as worked. Invoice numbers are tracked by period in an `Invoice Index` sheet tab so corrections reuse the original invoice number.
+
 ## Updating Cloudflare Worker Code
 
 Use the source in:

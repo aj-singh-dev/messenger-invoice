@@ -1,0 +1,54 @@
+var CONFIG_KEYS = {
+  TELEGRAM_BOT_TOKEN: 'TELEGRAM_BOT_TOKEN',
+  TELEGRAM_WEBHOOK_SECRET: 'TELEGRAM_WEBHOOK_SECRET',
+  TELEGRAM_ALLOWED_CHAT_IDS: 'TELEGRAM_ALLOWED_CHAT_IDS',
+  SPREADSHEET_ID: 'SPREADSHEET_ID',
+  INPUT_SHEET_NAME: 'INPUT_SHEET_NAME',
+  INVOICE_SHEET_NAME: 'INVOICE_SHEET_NAME',
+  INVOICE_NUMBER_CELL: 'INVOICE_NUMBER_CELL',
+  PERIOD_START_CELL: 'PERIOD_START_CELL',
+  PERIOD_END_CELL: 'PERIOD_END_CELL',
+  MONDAY_CELL: 'MONDAY_CELL',
+  TUESDAY_CELL: 'TUESDAY_CELL',
+  WEDNESDAY_CELL: 'WEDNESDAY_CELL',
+  THURSDAY_CELL: 'THURSDAY_CELL',
+  FRIDAY_CELL: 'FRIDAY_CELL',
+  SATURDAY_CELL: 'SATURDAY_CELL',
+  SUNDAY_CELL: 'SUNDAY_CELL',
+  WEEKDAY_RATE: 'WEEKDAY_RATE',
+  WEEKEND_RATE: 'WEEKEND_RATE',
+  LAST_INVOICE_NUMBER: 'LAST_INVOICE_NUMBER'
+};
+
+var DAY_ORDER = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+
+var DAY_ALIASES = {
+  mon: 'mon',
+  monday: 'mon',
+  tue: 'tue',
+  tues: 'tue',
+  tuesday: 'tue',
+  wed: 'wed',
+  weds: 'wed',
+  wednesday: 'wed',
+  thu: 'thu',
+  thur: 'thu',
+  thurs: 'thu',
+  thursday: 'thu',
+  fri: 'fri',
+  friday: 'fri',
+  sat: 'sat',
+  saturday: 'sat',
+  sun: 'sun',
+  sunday: 'sun'
+};
+
+var INVOICE_INDEX_SHEET_NAME = 'Invoice Index';
+
+var INVOICE_INDEX_COLUMNS = {
+  PERIOD_START: 1,
+  PERIOD_END: 2,
+  INVOICE_NUMBER: 3,
+  CREATED_AT: 4,
+  UPDATED_AT: 5
+};

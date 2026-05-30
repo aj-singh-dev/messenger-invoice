@@ -2,8 +2,12 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const codePath = path.join(__dirname, '..', 'Code.gs');
-const code = fs.readFileSync(codePath, 'utf8');
+const codeDir = path.join(__dirname, '..');
+const code = fs.readdirSync(codeDir)
+  .filter((file) => file.endsWith('.gs'))
+  .sort()
+  .map((file) => fs.readFileSync(path.join(codeDir, file), 'utf8'))
+  .join('\n');
 
 const context = {
   console,
@@ -18,7 +22,7 @@ const context = {
 };
 
 vm.createContext(context);
-vm.runInContext(code, context, { filename: codePath });
+vm.runInContext(code, context, { filename: 'apps-script/*.gs' });
 
 const cases = [
   {
@@ -70,6 +74,28 @@ const cases = [
       endDate: '2026-05-17',
       workedDays: ['sat', 'sun']
     }
+  },
+  {
+    name: 'Roster format infers year and worked days',
+    input: 'Hi ,\n18/05 OFF\n19/05 OFF\n20/05 10:00\n21/05 10:00\n22/05 11::00\n23/05 10:00\n24/05 11:00\nPLEASE CONFIRM',
+    referenceDate: new Date(2026, 4, 30),
+    expected: {
+      invoiceNumber: null,
+      startDate: '2026-05-18',
+      endDate: '2026-05-24',
+      workedDays: ['wed', 'thu', 'fri', 'sat', 'sun']
+    }
+  },
+  {
+    name: 'Roster format with explicit invoice number',
+    input: 'Invoice 4\n18/05 OFF\n19/05 OFF\n20/05 10:00',
+    referenceDate: new Date(2026, 4, 30),
+    expected: {
+      invoiceNumber: 4,
+      startDate: '2026-05-18',
+      endDate: '2026-05-20',
+      workedDays: ['wed']
+    }
   }
 ];
 
@@ -116,7 +142,7 @@ let failures = 0;
 
 cases.forEach((testCase) => {
   try {
-    const parsed = context.parseInvoiceRequest(testCase.input);
+    const parsed = context.parseInvoiceRequest(testCase.input, testCase.referenceDate);
     const actual = {
       invoiceNumber: parsed.invoiceNumber,
       startDate: toIsoDate(parsed.startDate),
@@ -152,6 +178,8 @@ telegramCases.forEach((testCase) => {
   }
 });
 
+testInvoiceIndexResolution();
+
 if (failures > 0) {
   process.exitCode = 1;
 }
@@ -170,4 +198,111 @@ function assertDeepEqual(name, actual, expected) {
   if (actualJson !== expectedJson) {
     throw new Error(`${name} mismatch\nactual:   ${actualJson}\nexpected: ${expectedJson}`);
   }
+}
+
+function testInvoiceIndexResolution() {
+  const indexRows = [];
+  let lastInvoiceNumber = 4;
+  const fakeSheet = createFakeIndexSheet(indexRows);
+  const fakeSpreadsheet = {
+    getSheetByName(name) {
+      return name === 'Invoice Index' ? fakeSheet : null;
+    },
+    insertSheet(name) {
+      if (name !== 'Invoice Index') {
+        throw new Error('Unexpected sheet: ' + name);
+      }
+      return fakeSheet;
+    }
+  };
+
+  context.LockService = {
+    getScriptLock() {
+      return {
+        waitLock() {},
+        releaseLock() {}
+      };
+    }
+  };
+  context.getRequiredProperty = (key) => {
+    if (key === 'LAST_INVOICE_NUMBER') {
+      return String(lastInvoiceNumber);
+    }
+    throw new Error('Unexpected required property: ' + key);
+  };
+  context.setScriptProperty = (key, value) => {
+    if (key === 'LAST_INVOICE_NUMBER') {
+      lastInvoiceNumber = Number(value);
+      return;
+    }
+    throw new Error('Unexpected set property: ' + key);
+  };
+
+  const explicit = {
+    invoiceNumber: 4,
+    startDate: new Date(2026, 4, 18),
+    endDate: new Date(2026, 4, 24),
+    workedDays: ['wed']
+  };
+  context.resolveInvoiceNumber(fakeSpreadsheet, explicit);
+  assertDeepEqual('Index records explicit invoice', indexRows.slice(1).map(summarizeIndexRow), [
+    ['2026-05-18', '2026-05-24', 4]
+  ]);
+
+  const correction = {
+    invoiceNumber: null,
+    startDate: new Date(2026, 4, 18),
+    endDate: new Date(2026, 4, 24),
+    workedDays: ['thu']
+  };
+  context.resolveInvoiceNumber(fakeSpreadsheet, correction);
+  assertDeepEqual('Index reuses invoice for correction', correction.invoiceNumber, 4);
+
+  const next = {
+    invoiceNumber: null,
+    startDate: new Date(2026, 4, 25),
+    endDate: new Date(2026, 4, 31),
+    workedDays: ['mon']
+  };
+  context.resolveInvoiceNumber(fakeSpreadsheet, next);
+  assertDeepEqual('Index reserves next invoice for later week', {
+    invoiceNumber: next.invoiceNumber,
+    lastInvoiceNumber
+  }, {
+    invoiceNumber: 5,
+    lastInvoiceNumber: 5
+  });
+
+  console.log('ok - Invoice index resolution');
+}
+
+function createFakeIndexSheet(rows) {
+  return {
+    getLastRow() {
+      return rows.length;
+    },
+    appendRow(row) {
+      rows.push(row);
+    },
+    getRange(row, column, rowCount, columnCount) {
+      return {
+        getValues() {
+          return rows.slice(row - 1, row - 1 + rowCount).map((sourceRow) => {
+            const values = [];
+            for (let index = 0; index < columnCount; index += 1) {
+              values.push(sourceRow[column - 1 + index]);
+            }
+            return values;
+          });
+        },
+        setValue(value) {
+          rows[row - 1][column - 1] = value;
+        }
+      };
+    }
+  };
+}
+
+function summarizeIndexRow(row) {
+  return [toIsoDate(row[0]), toIsoDate(row[1]), row[2]];
 }
