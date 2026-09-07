@@ -95,34 +95,22 @@ function processInboundMessage(message) {
       return;
     }
 
+    if (handlePendingInvoiceReviewEditMessage(message)) {
+      markMessageProcessed(message.id);
+      logInvoiceRun({ message: message, status: 'review_day_updated' });
+      return;
+    }
+
     sendTelegramChatAction(message.chatId, 'typing');
 
-    const invoice = parseInvoiceRequest(message.text);
-    assertInvoiceReadyForImmediateGeneration(invoice);
-    const spreadsheet = openInvoiceSpreadsheet();
-
-    resolveInvoiceNumber(spreadsheet, invoice);
-    writeInvoiceToSheet(spreadsheet, invoice);
-
-    SpreadsheetApp.flush();
-
-    sendTelegramChatAction(message.chatId, 'upload_document');
-
-    const pdfBlob = exportInvoicePdf(spreadsheet, invoice);
-    saveInvoicePdf(spreadsheet, invoice, pdfBlob);
-    sendTelegramChatAction(message.chatId, 'upload_document');
-    const telegramResult = sendTelegramDocument(message.chatId, pdfBlob);
-    sendInvoiceSuccessSummary(message.chatId, invoice, pdfBlob.getName());
-    sendInvoiceUncertainStatusNote(message.chatId, invoice);
-    sendDelayedEmailOffer(message.chatId, invoice);
+    const review = createInvoiceReviewForMessage(message);
 
     markMessageProcessed(message.id);
     logInvoiceRun({
       message: message,
-      invoice: invoice,
-      status: 'sent',
-      telegramMessageId: telegramResult && telegramResult.result ? telegramResult.result.message_id : '',
-      filename: pdfBlob.getName()
+      invoice: review.invoice,
+      status: 'review_created',
+      telegramMessageId: review.messageId
     });
   } catch (error) {
     clearMessageProcessing(message.id);
@@ -163,6 +151,118 @@ function processCallbackQuery(callbackQuery) {
       answerTelegramCallbackQuery(callbackQuery.callbackQueryId, 'Skipped');
       handleEmailSkipCallback(callbackQuery);
       markMessageProcessed(callbackQuery.id);
+      return;
+    }
+
+    if (callbackQuery.data.indexOf('review_create|') === 0) {
+      answerTelegramCallbackQuery(callbackQuery.callbackQueryId, 'Creating PDF...');
+      handleInvoiceReviewCreateCallback(callbackQuery);
+      markMessageProcessed(callbackQuery.id);
+      logInvoiceRun({
+        message: {
+          chatId: callbackQuery.chatId,
+          from: callbackQuery.from,
+          id: callbackQuery.id,
+          text: callbackQuery.data
+        },
+        status: 'review_create'
+      });
+      return;
+    }
+
+    if (callbackQuery.data.indexOf('review_edit_day|') === 0) {
+      answerTelegramCallbackQuery(callbackQuery.callbackQueryId, 'Choose a day');
+      handleInvoiceReviewEditDayCallback(callbackQuery);
+      markMessageProcessed(callbackQuery.id);
+      logInvoiceRun({
+        message: {
+          chatId: callbackQuery.chatId,
+          from: callbackQuery.from,
+          id: callbackQuery.id,
+          text: callbackQuery.data
+        },
+        status: 'review_edit_day'
+      });
+      return;
+    }
+
+    if (callbackQuery.data.indexOf('review_edit_invoice|') === 0) {
+      answerTelegramCallbackQuery(callbackQuery.callbackQueryId, 'Reply with the invoice number');
+      handleInvoiceReviewEditInvoiceNumberCallback(callbackQuery);
+      markMessageProcessed(callbackQuery.id);
+      logInvoiceRun({
+        message: {
+          chatId: callbackQuery.chatId,
+          from: callbackQuery.from,
+          id: callbackQuery.id,
+          text: callbackQuery.data
+        },
+        status: 'review_edit_invoice_number'
+      });
+      return;
+    }
+
+    if (callbackQuery.data.indexOf('review_day|') === 0) {
+      answerTelegramCallbackQuery(callbackQuery.callbackQueryId, 'Reply with the day value');
+      handleInvoiceReviewSelectDayCallback(callbackQuery);
+      markMessageProcessed(callbackQuery.id);
+      logInvoiceRun({
+        message: {
+          chatId: callbackQuery.chatId,
+          from: callbackQuery.from,
+          id: callbackQuery.id,
+          text: callbackQuery.data
+        },
+        status: 'review_day_prompt'
+      });
+      return;
+    }
+
+    if (callbackQuery.data.indexOf('review_shift_prev|') === 0) {
+      answerTelegramCallbackQuery(callbackQuery.callbackQueryId, 'Shifted back 7 days');
+      handleInvoiceReviewShiftWeekCallback(callbackQuery, -7);
+      markMessageProcessed(callbackQuery.id);
+      logInvoiceRun({
+        message: {
+          chatId: callbackQuery.chatId,
+          from: callbackQuery.from,
+          id: callbackQuery.id,
+          text: callbackQuery.data
+        },
+        status: 'review_shift_week_prev'
+      });
+      return;
+    }
+
+    if (callbackQuery.data.indexOf('review_shift_next|') === 0) {
+      answerTelegramCallbackQuery(callbackQuery.callbackQueryId, 'Shifted forward 7 days');
+      handleInvoiceReviewShiftWeekCallback(callbackQuery, 7);
+      markMessageProcessed(callbackQuery.id);
+      logInvoiceRun({
+        message: {
+          chatId: callbackQuery.chatId,
+          from: callbackQuery.from,
+          id: callbackQuery.id,
+          text: callbackQuery.data
+        },
+        status: 'review_shift_week_next'
+      });
+      return;
+    }
+
+    if (callbackQuery.data.indexOf('review_cancel|') === 0) {
+      answerTelegramCallbackQuery(callbackQuery.callbackQueryId, 'Cancelled');
+      handleInvoiceReviewCancelCallback(callbackQuery);
+      markMessageProcessed(callbackQuery.id);
+      logInvoiceRun({
+        message: {
+          chatId: callbackQuery.chatId,
+          from: callbackQuery.from,
+          id: callbackQuery.id,
+          text: callbackQuery.data
+        },
+        status: 'review_cancel'
+      });
       return;
     }
 

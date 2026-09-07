@@ -225,6 +225,32 @@ const telegramCases = [
   }
 ];
 
+const callbackCases = [
+  {
+    name: 'Telegram callback query',
+    payload: {
+      update_id: 125,
+      callback_query: {
+        id: 'callback-1',
+        from: { id: 101112 },
+        data: 'review_create|abcdef',
+        message: {
+          message_id: 458,
+          chat: { id: -100123 }
+        }
+      }
+    },
+    expected: {
+      id: '125:callback-1',
+      callbackQueryId: 'callback-1',
+      from: '101112',
+      chatId: '-100123',
+      messageId: 458,
+      data: 'review_create|abcdef'
+    }
+  }
+];
+
 let failures = 0;
 
 cases.forEach((testCase) => {
@@ -281,6 +307,31 @@ telegramCases.forEach((testCase) => {
   }
 });
 
+callbackCases.forEach((testCase) => {
+  try {
+    const callbackQuery = context.extractTelegramCallbackQuery(testCase.payload);
+    const actual = {
+      id: callbackQuery.id,
+      callbackQueryId: callbackQuery.callbackQueryId,
+      from: callbackQuery.from,
+      chatId: callbackQuery.chatId,
+      messageId: callbackQuery.messageId,
+      data: callbackQuery.data
+    };
+
+    assertDeepEqual(testCase.name, actual, testCase.expected);
+    console.log(`ok - ${testCase.name}`);
+  } catch (error) {
+    failures += 1;
+    console.error(`not ok - ${testCase.name}`);
+    console.error(error.stack || error.message || error);
+  }
+});
+
+testInvoiceReviewMessage();
+testInvoiceReviewDayUpdate();
+testInvoiceReviewInvoiceNumberUpdate();
+testInvoiceReviewWeekShift();
 testImmediateGenerationReadiness();
 testInvoiceIndexResolution();
 
@@ -378,6 +429,25 @@ function testInvoiceIndexResolution() {
     endDate: new Date(2026, 4, 31),
     workedDays: ['mon']
   };
+  const nextPreview = {
+    invoiceNumber: null,
+    startDate: new Date(2026, 4, 25),
+    endDate: new Date(2026, 4, 31),
+    workedDays: ['mon']
+  };
+  context.previewInvoiceNumber(fakeSpreadsheet, nextPreview);
+  assertDeepEqual('Index previews next invoice without reserving', {
+    invoiceNumber: nextPreview.invoiceNumber,
+    generatedInvoiceNumber: nextPreview.generatedInvoiceNumber,
+    indexRows: indexRows.length,
+    lastInvoiceNumber
+  }, {
+    invoiceNumber: 5,
+    generatedInvoiceNumber: true,
+    indexRows: 2,
+    lastInvoiceNumber: 4
+  });
+
   context.resolveInvoiceNumber(fakeSpreadsheet, next);
   assertDeepEqual('Index reserves next invoice for later week', {
     invoiceNumber: next.invoiceNumber,
@@ -437,6 +507,206 @@ function testImmediateGenerationReadiness() {
   context.assertInvoiceReadyForImmediateGeneration(parsed);
 
   console.log('ok - Immediate generation allows unknown roster status');
+}
+
+function testInvoiceReviewMessage() {
+  const previousGetOptionalProperty = context.getOptionalProperty;
+  const previousSession = context.Session;
+  const previousUtilities = context.Utilities;
+
+  context.getOptionalProperty = (key) => {
+    if (key === 'WEEKDAY_RATE') {
+      return '37';
+    }
+    if (key === 'WEEKEND_RATE') {
+      return '40';
+    }
+    return '';
+  };
+  context.Session = {
+    getScriptTimeZone() {
+      return 'Europe/London';
+    }
+  };
+  context.Utilities = {
+    formatDate(date, timezone, format) {
+      if (format === 'd') {
+        return String(date.getDate());
+      }
+      if (format === 'd MMMM yyyy') {
+        return `${date.getDate()} ${monthName(date)} ${date.getFullYear()}`;
+      }
+      if (format === 'd MMMM') {
+        return `${date.getDate()} ${monthName(date)}`;
+      }
+      return toIsoDate(date);
+    }
+  };
+
+  try {
+    const invoice = context.parseInvoiceRequest(
+      'Invoice 17\n24/08 OFF\n25/08 PFE\n26/08 05:00\n30/08 09:00 75',
+      new Date(2026, 7, 31)
+    );
+    const message = context.buildInvoiceReviewMessage(invoice);
+
+    assertContains('Review message includes invoice number', message, 'Invoice: 17');
+    assertContains('Review message includes uncertain status', message, 'Tuesday: PFE - £37 - please check');
+    assertContains('Review message includes amount override', message, 'Sunday: 09:00 - £75');
+    assertContains('Review message includes total', message, 'Total: £149');
+    console.log('ok - Invoice review message');
+  } finally {
+    context.getOptionalProperty = previousGetOptionalProperty;
+    context.Session = previousSession;
+    context.Utilities = previousUtilities;
+  }
+}
+
+function testInvoiceReviewDayUpdate() {
+  const invoice = context.parseInvoiceRequest(
+    'Invoice 17\n24/08 OFF\n25/08 05:00\n26/08 05:00',
+    new Date(2026, 7, 31)
+  );
+
+  context.updateInvoiceReviewDay(invoice, 'sun', '75');
+  const sunday = invoice.rosterEntries.find((entry) => entry.weekday === 'sun');
+
+  assertDeepEqual('Review day amount edit', {
+    workedDays: invoice.workedDays,
+    sunday: {
+      date: toIsoDate(sunday.date),
+      rawStatus: sunday.rawStatus,
+      worked: sunday.worked,
+      shiftTime: sunday.shiftTime,
+      amountOverride: sunday.amountOverride,
+      uncertain: sunday.uncertain
+    }
+  }, {
+    workedDays: ['tue', 'wed', 'sun'],
+    sunday: {
+      date: '2026-08-30',
+      rawStatus: 'worked',
+      worked: true,
+      shiftTime: '',
+      amountOverride: 75,
+      uncertain: false
+    }
+  });
+
+  context.updateInvoiceReviewDay(invoice, 'tue', 'OFF');
+  assertDeepEqual('Review day off edit', invoice.workedDays, ['wed', 'sun']);
+
+  console.log('ok - Invoice review day update');
+}
+
+function testInvoiceReviewInvoiceNumberUpdate() {
+  const indexRows = [[
+    'Period Start',
+    'Period End',
+    'Invoice Number',
+    'Drive File ID',
+    'Drive Filename',
+    'Created At',
+    'Updated At'
+  ]];
+  const fakeSheet = createFakeIndexSheet(indexRows);
+  const fakeSpreadsheet = {
+    getSheetByName(name) {
+      return name === 'Invoice Index' ? fakeSheet : null;
+    },
+    insertSheet(name) {
+      if (name !== 'Invoice Index') {
+        throw new Error('Unexpected sheet: ' + name);
+      }
+      return fakeSheet;
+    }
+  };
+  const previousOpenInvoiceSpreadsheet = context.openInvoiceSpreadsheet;
+
+  context.openInvoiceSpreadsheet = () => fakeSpreadsheet;
+
+  try {
+    const invoice = context.parseInvoiceRequest(
+      '24/08 OFF\n25/08 05:00\n26/08 05:00',
+      new Date(2026, 7, 31)
+    );
+    invoice.invoiceNumber = 17;
+    invoice.generatedInvoiceNumber = true;
+
+    context.updateInvoiceReviewInvoiceNumber(invoice, '18');
+    assertDeepEqual('Review invoice number edit', {
+      invoiceNumber: invoice.invoiceNumber,
+      generatedInvoiceNumber: invoice.generatedInvoiceNumber
+    }, {
+      invoiceNumber: 18,
+      generatedInvoiceNumber: false
+    });
+
+    console.log('ok - Invoice review invoice number update');
+  } finally {
+    context.openInvoiceSpreadsheet = previousOpenInvoiceSpreadsheet;
+  }
+}
+
+function testInvoiceReviewWeekShift() {
+  const invoice = context.parseInvoiceRequest(
+    '24/08 OFF\n25/08 05:00\n30/08 09:00',
+    new Date(2026, 7, 31)
+  );
+  invoice.invoiceNumber = 17;
+  invoice.generatedInvoiceNumber = true;
+  invoice.indexRow = 12;
+  invoice.driveFileId = 'file-id';
+  invoice.driveFilename = 'invoice.pdf';
+
+  context.shiftInvoiceReviewWeek(invoice, 7);
+
+  assertDeepEqual('Review week shift', {
+    invoiceNumber: invoice.invoiceNumber,
+    generatedInvoiceNumber: invoice.generatedInvoiceNumber,
+    startDate: toIsoDate(invoice.startDate),
+    endDate: toIsoDate(invoice.endDate),
+    workedDays: invoice.workedDays,
+    firstEntryDate: toIsoDate(invoice.rosterEntries[0].date),
+    indexRow: invoice.indexRow,
+    driveFileId: invoice.driveFileId,
+    driveFilename: invoice.driveFilename
+  }, {
+    invoiceNumber: null,
+    generatedInvoiceNumber: true,
+    startDate: '2026-08-31',
+    endDate: '2026-09-06',
+    workedDays: ['tue', 'sun'],
+    firstEntryDate: '2026-08-31',
+    indexRow: null,
+    driveFileId: '',
+    driveFilename: ''
+  });
+
+  console.log('ok - Invoice review week shift');
+}
+
+function monthName(date) {
+  return [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December'
+  ][date.getMonth()];
+}
+
+function assertContains(name, haystack, needle) {
+  if (String(haystack).indexOf(needle) === -1) {
+    throw new Error(`${name} missing ${JSON.stringify(needle)} in:\n${haystack}`);
+  }
 }
 
 function createFakeIndexSheet(rows) {

@@ -8,6 +8,7 @@ This project creates invoices from Telegram messages.
 Telegram bot
   -> Cloudflare Worker relay
   -> Google Apps Script Web App
+  -> Telegram invoice review
   -> Google Sheet invoice template
   -> PDF export
   -> Telegram PDF reply
@@ -94,7 +95,9 @@ Hi,
 PLEASE CONFIRM
 ```
 
-The script infers the invoice period from the dated lines and marks dates with time values as worked. Invoice numbers are tracked by period in an `Invoice Index` sheet tab so corrections reuse the original invoice number.
+The script infers the invoice period from the dated lines and marks dates with time values as worked. It sends a Telegram review with **Create PDF** and **Cancel** buttons before writing the sheet or exporting the PDF. Unknown statuses such as `PFE` are counted as worked at the normal rate and highlighted in the review.
+
+Invoice numbers are tracked by period in an `Invoice Index` sheet tab so corrections reuse the original invoice number.
 
 Generated PDFs are saved to `DRIVE_OUTPUT_FOLDER_ID` with start-date-based filenames:
 
@@ -104,7 +107,7 @@ YYYY-MM-DD - Workbook Name - Invoice 4.pdf
 
 Corrections for an indexed period replace the previously indexed PDF in that folder.
 
-Set email recipients from Telegram with `/email name@example.com other@example.com`. After each PDF is generated, the bot asks whether to email that saved PDF to the configured recipients.
+Set email recipients from Telegram with `/email name@example.com other@example.com`. After each PDF is generated from the review, the bot asks whether to email that saved PDF to the configured recipients.
 
 Turn on a weekly Telegram reminder with `/reminder on`. The reminder asks the chat to send the week's working days every Sunday evening.
 

@@ -2,7 +2,7 @@
 
 This folder contains the Google Apps Script invoice automation.
 
-It runs as a Google Apps Script Web App behind the Cloudflare Worker relay in `../cloudflare-worker`. Telegram sends bot updates to Cloudflare, Cloudflare forwards them to `doPost(e)`, the script parses the invoice request, updates the Google Sheet template, exports the invoice tab as a PDF, and replies in Telegram with the generated PDF.
+It runs as a Google Apps Script Web App behind the Cloudflare Worker relay in `../cloudflare-worker`. Telegram sends bot updates to Cloudflare, Cloudflare forwards them to `doPost(e)`, the script parses the invoice request, sends a review prompt with inline buttons, and only creates the PDF after the user taps **Create PDF**.
 
 Telegram should not point directly at the Apps Script URL. Apps Script Web Apps respond with a Google redirect, which Telegram treats as webhook failure. The Cloudflare Worker returns a direct `200 OK` to Telegram and follows the Apps Script redirect.
 
@@ -13,6 +13,7 @@ Telegram should not point directly at the Apps Script URL. Apps Script Web Apps 
 - `Telegram.gs` - Telegram update extraction, command handling helpers, and Telegram API calls.
 - `Parser.gs` - invoice request parsing for both week/day format and dated roster format.
 - `InvoiceIndex.gs` - period-to-invoice-number index logic.
+- `InvoiceReview.gs` - pending invoice review storage, review summary text, and Create PDF/Cancel callback handling.
 - `Sheets.gs` - Google Sheet writes and PDF export.
 - `Email.gs` - per-chat email recipient state, send confirmation buttons, and PDF email delivery.
 - `Reminder.gs` - weekly Telegram reminder subscriptions and time trigger management.
@@ -20,7 +21,7 @@ Telegram should not point directly at the Apps Script URL. Apps Script Web Apps 
 - `appsscript.json` - Apps Script manifest and OAuth scopes.
 - `.clasp.example.json` - Public-safe example for linking this folder to an Apps Script project.
 - `.clasp.json` - Local-only clasp config. This file is gitignored because it contains your Apps Script project ID.
-- `.claspignore` - Ensures only `Code.gs` and `appsscript.json` are pushed by `clasp`.
+- `.claspignore` - Ensures Apps Script source files and `appsscript.json` are pushed by `clasp`.
 - `tools/parser-test.js` - local Node test runner for parser and Telegram update extraction behavior.
 - `tools/validate-env.js` - local `.env` structure checker.
 
@@ -89,7 +90,7 @@ Hi,
 PLEASE CONFIRM
 ```
 
-The parser treats `OFF` as not worked and any time-like value such as `10:00` or `11::00` as worked. It infers the full Monday-to-Sunday invoice week around roster dates, so omitting an OFF day does not create a different period. Dates without a year use the current year.
+The parser treats `OFF` as not worked and any time-like value such as `10:00` or `11::00` as worked. Unknown statuses such as `PFE` are counted as worked at the normal rate and highlighted for review. It infers the full Monday-to-Sunday invoice week around roster dates, so omitting an OFF day does not create a different period. Dates without a year use the current year.
 
 The older explicit week/day format is still supported:
 
@@ -119,6 +120,20 @@ Invoice numbers are resolved through an `Invoice Index` sheet tab.
 This prevents corrections to older weeks from accidentally incrementing the invoice sequence.
 
 The `Invoice Index` tab also stores the saved PDF's Drive file ID and filename. Corrections for an indexed period replace the previous indexed PDF inside `DRIVE_OUTPUT_FOLDER_ID`.
+
+## Invoice Review
+
+Pasting or forwarding a rota now creates a review message first. The review shows the invoice number, week, each day, parsed shift/status values, any amount overrides, uncertain statuses, and the estimated total.
+
+The user can tap:
+
+- **Create PDF** - writes the Google Sheet template, exports the PDF, saves it to Drive, sends it in Telegram, and offers email sending.
+- **Edit day** - asks which weekday to change, then uses a Telegram reply prompt for `OFF`, a time such as `05:00`, or an amount such as `75`.
+- **Invoice number** - asks for the invoice number to use and validates it against the `Invoice Index`.
+- **Week -7 days** / **Week +7 days** - shifts the reviewed week and roster entries before PDF creation.
+- **Cancel** - clears the pending review without creating a PDF.
+
+Pending reviews are stored in Apps Script `CacheService` for up to six hours. If a review expires, paste the rota again.
 
 ## PDF Saving
 

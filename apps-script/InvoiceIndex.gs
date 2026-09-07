@@ -47,6 +47,46 @@ function resolveInvoiceNumber(spreadsheet, invoice) {
   }
 }
 
+function previewInvoiceNumber(spreadsheet, invoice) {
+  const indexSheet = getOrCreateInvoiceIndexSheet(spreadsheet);
+  const existing = findInvoiceIndexEntry(indexSheet, invoice.startDate, invoice.endDate);
+
+  invoice.generatedInvoiceNumber = false;
+
+  if (existing) {
+    if (invoice.invoiceNumber && invoice.invoiceNumber !== existing.invoiceNumber) {
+      throwInvoiceNumberConflict(existing, invoice.invoiceNumber);
+    }
+
+    invoice.invoiceNumber = existing.invoiceNumber;
+    invoice.indexRow = existing.row;
+    invoice.driveFileId = existing.driveFileId;
+    invoice.driveFilename = existing.driveFilename;
+    return;
+  }
+
+  if (invoice.invoiceNumber) {
+    assertInvoiceNumberAvailable(indexSheet, invoice);
+    return;
+  }
+
+  const latest = getLatestInvoiceIndexEntry(indexSheet);
+  if (!latest) {
+    throw new Error(
+      'Invoice number is missing and the invoice index is empty. Include the invoice number once, for example: Invoice 4.'
+    );
+  }
+
+  if (invoice.startDate.getTime() < latest.startDate.getTime()) {
+    throw new Error(
+      'Invoice number is missing for an older unindexed week. Include the invoice number once, for example: Invoice 4.'
+    );
+  }
+
+  invoice.invoiceNumber = getNextInvoiceNumber(indexSheet);
+  invoice.generatedInvoiceNumber = true;
+}
+
 function getOrCreateInvoiceIndexSheet(spreadsheet) {
   const sheet = getOrCreateSheet(spreadsheet, INVOICE_INDEX_SHEET_NAME);
   ensureInvoiceIndexHeader(sheet);
