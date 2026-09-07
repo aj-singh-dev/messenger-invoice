@@ -6,6 +6,30 @@ Run from the project root.
 
 ## Commands
 
+Test the Cloudflare Worker relay behavior locally:
+
+```sh
+node scripts/test-cloudflare-worker.js
+```
+
+Scan Worker deployment files for likely committed secrets:
+
+```sh
+node scripts/validate-cloudflare-worker-deploy.js
+```
+
+Run Cloudflare Worker tests, validate checked-in deployment files, and perform a Wrangler dry run:
+
+```sh
+scripts/deploy-cloudflare-worker.sh
+```
+
+Publish the Worker after the dry run passes:
+
+```sh
+scripts/deploy-cloudflare-worker.sh --apply
+```
+
 Register slash-command suggestions:
 
 ```sh

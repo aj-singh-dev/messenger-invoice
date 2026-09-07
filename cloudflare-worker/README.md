@@ -13,9 +13,31 @@ https://YOUR_WORKER_NAME.YOUR_WORKERS_SUBDOMAIN.workers.dev
 ## Files
 
 - `worker.js` - Cloudflare Worker source code.
+- `../wrangler.toml` - Wrangler deployment config. It contains no account IDs, service URLs, variables, or secrets.
+- `../scripts/test-cloudflare-worker.js` - local Worker behavior tests.
+- `../scripts/validate-cloudflare-worker-deploy.js` - pre-deploy scan for accidental committed secrets.
+- `../scripts/deploy-cloudflare-worker.sh` - safe local dry-run/deploy wrapper.
 - `README.md` - Deployment and maintenance notes.
 
 ## Deployment
+
+Preferred local deployment:
+
+```sh
+scripts/deploy-cloudflare-worker.sh
+```
+
+That runs the Worker tests, scans checked-in Worker deployment files for likely leaked values, and runs `wrangler deploy --dry-run`.
+
+To publish after the dry run passes:
+
+```sh
+scripts/deploy-cloudflare-worker.sh --apply
+```
+
+Use Wrangler auth from your local machine, either `npx wrangler login` or a local `CLOUDFLARE_API_TOKEN` environment variable. Do not commit Cloudflare credentials, account IDs, real Apps Script URLs, Telegram tokens, webhook secrets, `.env*`, or `.dev.vars*` files. Do not put those values in GitHub Actions unless there is a specific reason to move deployment into CI.
+
+Manual dashboard deployment is still available:
 
 1. Open Cloudflare Dashboard.
 2. Go to **Workers & Pages**.
@@ -24,9 +46,9 @@ https://YOUR_WORKER_NAME.YOUR_WORKERS_SUBDOMAIN.workers.dev
 5. Replace the Worker source with `worker.js`.
 6. Click **Save and deploy**.
 
-## Required Worker Variables
+## Required Worker Secrets
 
-Set these in Cloudflare under **Worker > Settings > Variables**:
+Set these in Cloudflare under **Worker > Settings > Variables and Secrets** as **Secret** values:
 
 ```text
 APPS_SCRIPT_URL=https://script.google.com/macros/s/YOUR_APPS_SCRIPT_DEPLOYMENT_ID/exec
@@ -38,6 +60,8 @@ TELEGRAM_ADMIN_CHAT_IDS=123456789
 `APPS_SCRIPT_URL` should be the Apps Script Web App `/exec` URL, without `?telegram_secret=...`. The Worker appends that query parameter itself.
 
 `TELEGRAM_ALLOWED_CHAT_IDS` is required for the actual user. `TELEGRAM_ADMIN_CHAT_IDS` is optional; admin chats are also allowed automatically. Rejected updates return `200 OK` to Telegram but are not forwarded to Apps Script.
+
+The secret names are declared in `wrangler.toml` under `[secrets].required`, but the values are intentionally not stored there. Wrangler validates that these secrets exist before deployment.
 
 ## Telegram Webhook
 

@@ -119,7 +119,19 @@ Use the source in:
 cloudflare-worker/worker.js
 ```
 
-Deploy it in Cloudflare Dashboard under **Workers & Pages > YOUR_WORKER_NAME > Edit code**.
+Run a local safe dry run from the project root:
+
+```sh
+scripts/deploy-cloudflare-worker.sh
+```
+
+Publish only after that passes:
+
+```sh
+scripts/deploy-cloudflare-worker.sh --apply
+```
+
+The Wrangler config is in `wrangler.toml`, but runtime values stay in Cloudflare Worker secrets. Do not commit Cloudflare credentials, account IDs, real Apps Script URLs, Telegram tokens, webhook secrets, `.env*`, or `.dev.vars*` files. Manual dashboard deployment under **Workers & Pages > YOUR_WORKER_NAME > Edit code** is still available.
 
 ## Maintenance Scripts
 
@@ -129,6 +141,7 @@ Run from the project root:
 node scripts/get-telegram-webhook-info.js
 node scripts/set-telegram-commands.js
 node scripts/set-telegram-webhook.js https://YOUR_WORKER_NAME.YOUR_WORKERS_SUBDOMAIN.workers.dev
+node scripts/test-cloudflare-worker.js
 ```
 
 See `scripts/README.md`.
@@ -145,12 +158,12 @@ Apps Script Script Properties:
 - `DRIVE_OUTPUT_FOLDER_ID`
 - all sheet/cell/rate properties listed in `apps-script/README.md`
 
-Cloudflare Worker variables:
+Cloudflare Worker secrets:
 
 - `APPS_SCRIPT_URL`
 - `TELEGRAM_WEBHOOK_SECRET`
 - `TELEGRAM_ALLOWED_CHAT_IDS`
-- `TELEGRAM_ADMIN_CHAT_IDS` optional, admin chats are also allowed through the Worker
+- `TELEGRAM_ADMIN_CHAT_IDS` admin chats are also allowed through the Worker
 
 The same `TELEGRAM_WEBHOOK_SECRET` must be used in Apps Script, Cloudflare, and Telegram `setWebhook`.
 

@@ -1,0 +1,21 @@
+name = "telegram-invoice-relay"
+main = "cloudflare-worker/worker.js"
+compatibility_date = "2026-05-30"
+preview_urls = false
+
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = true
+
+# Keep runtime values out of this file. Configure these as Cloudflare
+# Worker secrets so deployment can validate their presence without exposing
+# values in git, Wrangler output, or the Cloudflare dashboard.
+[secrets]
+required = [
+  "APPS_SCRIPT_URL",
+  "TELEGRAM_WEBHOOK_SECRET",
+  "TELEGRAM_ALLOWED_CHAT_IDS",
+  "TELEGRAM_ADMIN_CHAT_IDS"
+]
