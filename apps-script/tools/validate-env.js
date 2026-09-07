@@ -81,7 +81,7 @@ if (env.TELEGRAM_BOT_TOKEN && !/^\d+:[A-Za-z0-9_-]+$/.test(env.TELEGRAM_BOT_TOKE
   }
 });
 
-['WEEKDAY_RATE', 'WEEKEND_RATE', 'LAST_INVOICE_NUMBER'].forEach((key) => {
+['WEEKDAY_RATE', 'WEEKEND_RATE', 'VAT_RATE_PERCENT', 'LAST_INVOICE_NUMBER'].forEach((key) => {
   if (env[key] && !Number.isFinite(Number(env[key]))) {
     failures += 1;
     console.error(`invalid - ${key} must be numeric`);

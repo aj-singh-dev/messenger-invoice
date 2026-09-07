@@ -21,7 +21,8 @@ function createInvoiceReviewForMessage(message) {
   const result = sendTelegramTextWithInlineKeyboard(
     message.chatId,
     buildInvoiceReviewMessage(invoice),
-    buildInvoiceReviewKeyboard(token)
+    buildInvoiceReviewKeyboard(token),
+    'HTML'
   );
   review.reviewMessageId = result && result.result ? result.result.message_id : '';
   storeInvoiceReview(review);
@@ -70,7 +71,8 @@ function handleInvoiceReviewEditDayCallback(callbackQuery) {
     callbackQuery.chatId,
     callbackQuery.messageId,
     buildInvoiceReviewMessage(deserializeInvoiceReviewInvoice(review.invoice)),
-    buildInvoiceReviewDayKeyboard(review.token)
+    buildInvoiceReviewDayKeyboard(review.token),
+    'HTML'
   );
 }
 
@@ -82,7 +84,8 @@ function handleInvoiceReviewChangeCallback(callbackQuery) {
     callbackQuery.chatId,
     callbackQuery.messageId,
     buildInvoiceReviewMessage(deserializeInvoiceReviewInvoice(review.invoice)),
-    buildInvoiceReviewChangeKeyboard(review.token)
+    buildInvoiceReviewChangeKeyboard(review.token),
+    'HTML'
   );
 }
 
@@ -94,7 +97,8 @@ function handleInvoiceReviewBackCallback(callbackQuery) {
     callbackQuery.chatId,
     callbackQuery.messageId,
     buildInvoiceReviewMessage(deserializeInvoiceReviewInvoice(review.invoice)),
-    buildInvoiceReviewKeyboard(review.token)
+    buildInvoiceReviewKeyboard(review.token),
+    'HTML'
   );
 }
 
@@ -109,7 +113,9 @@ function handleInvoiceReviewSelectDayCallback(callbackQuery) {
   const invoice = deserializeInvoiceReviewInvoice(review.invoice);
   const entry = getRosterEntriesByDay(invoice)[day];
   const current = entry ? formatInvoiceReviewEntry(entry, day) :
-    ((invoice.workedDays || []).indexOf(day) !== -1 ? 'worked' : 'OFF');
+    ((invoice.workedDays || []).indexOf(day) !== -1 ?
+      '£' + formatMoneyForTelegram(getDefaultDayAmount(day)) :
+      'OFF');
 
   storeInvoiceReviewEdit({
     chatId: callbackQuery.chatId,
@@ -163,7 +169,8 @@ function handleInvoiceReviewShiftWeekCallback(callbackQuery, dayOffset) {
     callbackQuery.chatId,
     callbackQuery.messageId,
     buildInvoiceReviewMessage(invoice),
-    buildInvoiceReviewKeyboard(review.token)
+    buildInvoiceReviewKeyboard(review.token),
+    'HTML'
   );
 }
 
@@ -207,7 +214,8 @@ function handlePendingInvoiceReviewEditMessage(message) {
       message.chatId,
       review.reviewMessageId,
       buildInvoiceReviewMessage(invoice),
-      buildInvoiceReviewKeyboard(review.token)
+      buildInvoiceReviewKeyboard(review.token),
+      'HTML'
     );
   }
 
@@ -374,15 +382,23 @@ function parseInvoiceReviewDayValue(invoice, day, value) {
 }
 
 function buildInvoiceReviewMessage(invoice) {
+  const subtotal = calculateInvoiceReviewSubtotal(invoice);
+  const vat = calculateInvoiceReviewVat(subtotal);
+  const total = subtotal + vat;
+
   return [
     'Please check this invoice before I create the PDF.',
     '',
     'Invoice: ' + invoice.invoiceNumber,
     'Week: ' + formatFriendlyDateRange(invoice.startDate, invoice.endDate),
+    'OFF days: ' + countInvoiceReviewOffDays(invoice),
     '',
     buildInvoiceReviewDayLines(invoice).join('\n'),
     '',
-    'Total: £' + formatMoneyForTelegram(calculateInvoiceReviewTotal(invoice))
+    'Subtotal: £' + formatMoneyForTelegram(subtotal),
+    'VAT: £' + formatMoneyForTelegram(vat),
+    '',
+    '<b>TOTAL: £' + formatMoneyForTelegram(total) + '</b>'
   ].join('\n');
 }
 
@@ -398,7 +414,7 @@ function buildInvoiceReviewDayLines(invoice) {
     }
 
     if ((invoice.workedDays || []).indexOf(day) !== -1) {
-      return label + ': worked - £' + formatMoneyForTelegram(getDefaultDayAmount(day));
+      return label + ': £' + formatMoneyForTelegram(getDefaultDayAmount(day));
     }
 
     return label + ': OFF';
@@ -410,12 +426,10 @@ function formatInvoiceReviewEntry(entry, day) {
     return 'OFF';
   }
 
-  const status = entry.shiftTime || entry.rawStatus || 'worked';
-  const suffix = entry.uncertain ? ' - please check' : '';
-  return status + ' - £' + formatMoneyForTelegram(getInvoiceReviewEntryAmount(entry, day)) + suffix;
+  return '£' + formatMoneyForTelegram(getInvoiceReviewEntryAmount(entry, day));
 }
 
-function calculateInvoiceReviewTotal(invoice) {
+function calculateInvoiceReviewSubtotal(invoice) {
   const entriesByDay = getRosterEntriesByDay(invoice);
 
   return DAY_ORDER.reduce(function(total, day) {
@@ -432,6 +446,28 @@ function calculateInvoiceReviewTotal(invoice) {
   }, 0);
 }
 
+function calculateInvoiceReviewVat(subtotal) {
+  return Number(subtotal) * getVatRatePercent() / 100;
+}
+
+function calculateInvoiceReviewTotal(invoice) {
+  const subtotal = calculateInvoiceReviewSubtotal(invoice);
+  return subtotal + calculateInvoiceReviewVat(subtotal);
+}
+
+function countInvoiceReviewOffDays(invoice) {
+  const entriesByDay = getRosterEntriesByDay(invoice);
+
+  return DAY_ORDER.reduce(function(total, day) {
+    const entry = entriesByDay[day];
+    if (entry) {
+      return entry.worked ? total : total + 1;
+    }
+
+    return (invoice.workedDays || []).indexOf(day) === -1 ? total + 1 : total;
+  }, 0);
+}
+
 function getInvoiceReviewEntryAmount(entry, day) {
   if (entry.amountOverride !== null && entry.amountOverride !== undefined && entry.amountOverride !== '') {
     return Number(entry.amountOverride);
@@ -444,6 +480,16 @@ function getDefaultDayAmount(day) {
   const key = day === 'sat' || day === 'sun' ? CONFIG_KEYS.WEEKEND_RATE : CONFIG_KEYS.WEEKDAY_RATE;
   const amount = Number(getOptionalProperty(key));
   return Number.isFinite(amount) ? amount : 0;
+}
+
+function getVatRatePercent() {
+  const value = getOptionalProperty(CONFIG_KEYS.VAT_RATE_PERCENT);
+  if (String(value || '').trim() === '') {
+    return 20;
+  }
+
+  const amount = Number(value);
+  return Number.isFinite(amount) ? amount : 20;
 }
 
 function getRosterEntriesByDay(invoice) {
@@ -467,7 +513,7 @@ function buildInvoiceReviewKeyboard(token) {
 function buildInvoiceReviewChangeKeyboard(token) {
   return [
     [{ text: 'Change day', callback_data: 'review_edit_day|' + token }],
-    [{ text: 'Invoice number', callback_data: 'review_edit_invoice|' + token }],
+    [{ text: 'Change invoice number', callback_data: 'review_edit_invoice|' + token }],
     // [
     //   { text: 'Week -7 days', callback_data: 'review_shift_prev|' + token },
     //   { text: 'Week +7 days', callback_data: 'review_shift_next|' + token }

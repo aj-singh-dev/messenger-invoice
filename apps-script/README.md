@@ -58,6 +58,7 @@ SATURDAY_CELL=...
 SUNDAY_CELL=...
 WEEKDAY_RATE=...
 WEEKEND_RATE=...
+VAT_RATE_PERCENT=20
 LAST_INVOICE_NUMBER=...
 ```
 
@@ -67,6 +68,8 @@ Optional:
 TELEGRAM_ADMIN_CHAT_IDS=123456789
 TELEGRAM_TEST_MODE=false
 ```
+
+`VAT_RATE_PERCENT` is optional. If it is missing, the Telegram review preview uses `20`.
 
 `TELEGRAM_ALLOWED_CHAT_IDS` is required for the actual user. Admin chats listed in `TELEGRAM_ADMIN_CHAT_IDS` are also allowed automatically. Use the same allowlist/admin values in Cloudflare Worker variables so unknown chats are blocked before they reach Apps Script.
 
@@ -123,14 +126,13 @@ The `Invoice Index` tab also stores the saved PDF's Drive file ID and filename. 
 
 ## Invoice Review
 
-Pasting or forwarding a rota now creates a review message first. The review shows the invoice number, week, each day, parsed shift/status values, any amount overrides, uncertain statuses, and the estimated total.
+Pasting or forwarding a rota now creates a review message first. The review shows the invoice number, week, OFF count, each day, any amount overrides, uncertain statuses, subtotal, VAT, and total.
 
 The user can tap:
 
 - **Create PDF** - writes the Google Sheet template, exports the PDF, saves it to Drive, sends it in Telegram, and offers email sending.
-- **Edit day** - asks which weekday to change, then uses a Telegram reply prompt for `OFF`, a time such as `05:00`, or an amount such as `75`.
-- **Invoice number** - asks for the invoice number to use and validates it against the `Invoice Index`.
-- **Week -7 days** / **Week +7 days** - shifts the reviewed week and roster entries before PDF creation.
+- **Change day** - asks which weekday to change, then uses a Telegram reply prompt for `OFF`, a time such as `05:00`, or an amount such as `75`.
+- **Change invoice number** - asks for the invoice number to use and validates it against the `Invoice Index`.
 - **Cancel** - clears the pending review without creating a PDF.
 
 Pending reviews are stored in Apps Script `CacheService` for up to six hours. If a review expires, paste the rota again.

@@ -164,19 +164,24 @@ function sendTelegramText(chatId, text) {
   return parseJsonResponse(response, 'Telegram text send');
 }
 
-function sendTelegramTextWithInlineKeyboard(chatId, text, inlineKeyboard) {
+function sendTelegramTextWithInlineKeyboard(chatId, text, inlineKeyboard, parseMode) {
   const url = getTelegramApiUrl('sendMessage');
+  const payload = {
+    chat_id: chatId,
+    text: text,
+    reply_markup: {
+      inline_keyboard: inlineKeyboard
+    }
+  };
+
+  if (parseMode) {
+    payload.parse_mode = parseMode;
+  }
 
   const response = UrlFetchApp.fetch(url, {
     method: 'post',
     contentType: 'application/json',
-    payload: JSON.stringify({
-      chat_id: chatId,
-      text: text,
-      reply_markup: {
-        inline_keyboard: inlineKeyboard
-      }
-    }),
+    payload: JSON.stringify(payload),
     muteHttpExceptions: true
   });
 
@@ -236,20 +241,25 @@ function editTelegramMessageText(chatId, messageId, text) {
   return parseJsonResponse(response, 'Telegram message edit');
 }
 
-function editTelegramMessageTextWithInlineKeyboard(chatId, messageId, text, inlineKeyboard) {
+function editTelegramMessageTextWithInlineKeyboard(chatId, messageId, text, inlineKeyboard, parseMode) {
   const url = getTelegramApiUrl('editMessageText');
+  const payload = {
+    chat_id: chatId,
+    message_id: messageId,
+    text: text,
+    reply_markup: {
+      inline_keyboard: inlineKeyboard
+    }
+  };
+
+  if (parseMode) {
+    payload.parse_mode = parseMode;
+  }
 
   const response = UrlFetchApp.fetch(url, {
     method: 'post',
     contentType: 'application/json',
-    payload: JSON.stringify({
-      chat_id: chatId,
-      message_id: messageId,
-      text: text,
-      reply_markup: {
-        inline_keyboard: inlineKeyboard
-      }
-    }),
+    payload: JSON.stringify(payload),
     muteHttpExceptions: true
   });
 

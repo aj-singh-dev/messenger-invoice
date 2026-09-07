@@ -586,9 +586,13 @@ function testInvoiceReviewMessage() {
     const message = context.buildInvoiceReviewMessage(invoice);
 
     assertContains('Review message includes invoice number', message, 'Invoice: 17');
-    assertContains('Review message includes uncertain status', message, 'Tuesday: PFE - £37 - please check');
-    assertContains('Review message includes amount override', message, 'Sunday: 09:00 - £75');
-    assertContains('Review message includes total', message, 'Total: £149');
+    assertContains('Review message includes off count', message, 'OFF days: 4');
+    assertContains('Review message shows uncertain status amount only', message, 'Tuesday: £37');
+    assertContains('Review message hides normal shift time', message, 'Wednesday: £37');
+    assertContains('Review message includes amount override', message, 'Sunday: £75');
+    assertContains('Review message includes subtotal', message, 'Subtotal: £149');
+    assertContains('Review message includes vat', message, 'VAT: £29.80');
+    assertContains('Review message includes bold total', message, '<b>TOTAL: £178.80</b>');
     console.log('ok - Invoice review message');
   } finally {
     context.getOptionalProperty = previousGetOptionalProperty;
@@ -606,7 +610,7 @@ function testInvoiceReviewKeyboard() {
 
   assertDeepEqual('Invoice review change keyboard', context.buildInvoiceReviewChangeKeyboard('token'), [
     [{ text: 'Change day', callback_data: 'review_edit_day|token' }],
-    [{ text: 'Invoice number', callback_data: 'review_edit_invoice|token' }],
+    [{ text: 'Change invoice number', callback_data: 'review_edit_invoice|token' }],
     [{ text: 'Back', callback_data: 'review_back|token' }],
     [{ text: 'Cancel', callback_data: 'review_cancel|token' }]
   ]);
@@ -647,6 +651,9 @@ function testInvoiceReviewDayUpdate() {
 
   context.updateInvoiceReviewDay(invoice, 'tue', 'OFF');
   assertDeepEqual('Review day off edit', invoice.workedDays, ['wed', 'sun']);
+
+  context.updateInvoiceReviewDay(invoice, 'wed', 'off');
+  assertDeepEqual('Review day lowercase off edit', invoice.workedDays, ['sun']);
 
   console.log('ok - Invoice review day update');
 }
