@@ -31,9 +31,13 @@ Set these in Cloudflare under **Worker > Settings > Variables**:
 ```text
 APPS_SCRIPT_URL=https://script.google.com/macros/s/YOUR_APPS_SCRIPT_DEPLOYMENT_ID/exec
 TELEGRAM_WEBHOOK_SECRET=<same value as Apps Script TELEGRAM_WEBHOOK_SECRET>
+TELEGRAM_ALLOWED_CHAT_IDS=123456789,-1001234567890
+TELEGRAM_ADMIN_CHAT_IDS=123456789
 ```
 
 `APPS_SCRIPT_URL` should be the Apps Script Web App `/exec` URL, without `?telegram_secret=...`. The Worker appends that query parameter itself.
+
+`TELEGRAM_ALLOWED_CHAT_IDS` is required for the actual user. `TELEGRAM_ADMIN_CHAT_IDS` is optional; admin chats are also allowed automatically. Rejected updates return `200 OK` to Telegram but are not forwarded to Apps Script.
 
 ## Telegram Webhook
 
@@ -45,7 +49,7 @@ curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
   -d '{
     "url": "https://YOUR_WORKER_NAME.YOUR_WORKERS_SUBDOMAIN.workers.dev",
     "secret_token": "'"$TELEGRAM_WEBHOOK_SECRET"'",
-    "allowed_updates": ["message"],
+      "allowed_updates": ["message", "callback_query"],
     "drop_pending_updates": true
   }'
 ```
@@ -64,7 +68,7 @@ Expected healthy state:
   "result": {
     "url": "https://YOUR_WORKER_NAME.YOUR_WORKERS_SUBDOMAIN.workers.dev",
     "pending_update_count": 0,
-    "allowed_updates": ["message"]
+    "allowed_updates": ["message", "callback_query"]
   }
 }
 ```
@@ -73,4 +77,4 @@ Expected healthy state:
 
 Do not set Telegram's webhook directly to Apps Script. Apps Script Web Apps return a `302` redirect to `script.googleusercontent.com`; Telegram reports that as `Wrong response from the webhook: 302 Moved Temporarily`.
 
-The Worker fixes this by returning `200 OK` directly to Telegram, then forwarding the update to Apps Script with `redirect: 'follow'`.
+The Worker fixes this by returning `200 OK` directly to Telegram, then forwarding allowed updates to Apps Script with `redirect: 'follow'`.

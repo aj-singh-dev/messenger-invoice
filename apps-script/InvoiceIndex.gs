@@ -7,6 +7,10 @@ function resolveInvoiceNumber(spreadsheet, invoice) {
     const existing = findInvoiceIndexEntry(indexSheet, invoice.startDate, invoice.endDate);
 
     if (existing) {
+      if (invoice.invoiceNumber && invoice.invoiceNumber !== existing.invoiceNumber) {
+        throwInvoiceNumberConflict(existing, invoice.invoiceNumber);
+      }
+
       invoice.invoiceNumber = existing.invoiceNumber;
       invoice.indexRow = existing.row;
       invoice.driveFileId = existing.driveFileId;
@@ -16,6 +20,7 @@ function resolveInvoiceNumber(spreadsheet, invoice) {
     }
 
     if (invoice.invoiceNumber) {
+      assertInvoiceNumberAvailable(indexSheet, invoice);
       upsertInvoiceIndexEntry(indexSheet, invoice);
       syncLastInvoiceNumberAtLeast(invoice.invoiceNumber);
       return;
@@ -34,7 +39,7 @@ function resolveInvoiceNumber(spreadsheet, invoice) {
       );
     }
 
-    invoice.invoiceNumber = reserveNextInvoiceNumber();
+    invoice.invoiceNumber = reserveNextInvoiceNumber(indexSheet);
     invoice.generatedInvoiceNumber = true;
     appendInvoiceIndexEntry(indexSheet, invoice);
   } finally {
@@ -112,6 +117,53 @@ function getLatestInvoiceIndexEntry(sheet) {
   });
 
   return entries[entries.length - 1];
+}
+
+function findInvoiceIndexEntryByNumber(sheet, invoiceNumber) {
+  const entries = readInvoiceIndexEntries(sheet);
+  const normalizedInvoiceNumber = Number(invoiceNumber);
+
+  for (let index = 0; index < entries.length; index += 1) {
+    if (entries[index].invoiceNumber === normalizedInvoiceNumber) {
+      return entries[index];
+    }
+  }
+
+  return null;
+}
+
+function assertInvoiceNumberAvailable(sheet, invoice) {
+  const duplicate = findInvoiceIndexEntryByNumber(sheet, invoice.invoiceNumber);
+  if (!duplicate) {
+    return;
+  }
+
+  if (duplicate.startKey === dateKey(invoice.startDate) && duplicate.endKey === dateKey(invoice.endDate)) {
+    return;
+  }
+
+  const error = new Error(
+    'Invoice ' + invoice.invoiceNumber + ' is already saved for ' +
+    formatIndexPeriodForError(duplicate) + '. Use a different invoice number.'
+  );
+  error.code = 'DUPLICATE_INVOICE_NUMBER';
+  error.existingInvoiceNumber = duplicate.invoiceNumber;
+  error.existingStartDate = duplicate.startDate;
+  error.existingEndDate = duplicate.endDate;
+  throw error;
+}
+
+function throwInvoiceNumberConflict(existing, requestedInvoiceNumber) {
+  const error = new Error(
+    'This week is already saved as Invoice ' + existing.invoiceNumber +
+    ', but your message says Invoice ' + requestedInvoiceNumber + '.'
+  );
+  error.code = 'INVOICE_NUMBER_CONFLICT';
+  error.existingInvoiceNumber = existing.invoiceNumber;
+  error.requestedInvoiceNumber = requestedInvoiceNumber;
+  error.existingStartDate = existing.startDate;
+  error.existingEndDate = existing.endDate;
+  throw error;
 }
 
 function upsertInvoiceIndexEntry(sheet, invoice) {
@@ -211,7 +263,14 @@ function normalizeSheetDate(value) {
   return null;
 }
 
-function getNextInvoiceNumber() {
+function getNextInvoiceNumber(indexSheet) {
+  if (indexSheet) {
+    const maxInvoiceNumber = getMaxInvoiceNumber(indexSheet);
+    if (maxInvoiceNumber !== null) {
+      return maxInvoiceNumber + 1;
+    }
+  }
+
   const lastInvoiceNumber = Number(getRequiredProperty(CONFIG_KEYS.LAST_INVOICE_NUMBER));
   if (!Number.isFinite(lastInvoiceNumber)) {
     throw new Error('LAST_INVOICE_NUMBER must be a number.');
@@ -220,8 +279,8 @@ function getNextInvoiceNumber() {
   return lastInvoiceNumber + 1;
 }
 
-function reserveNextInvoiceNumber() {
-  const invoiceNumber = getNextInvoiceNumber();
+function reserveNextInvoiceNumber(indexSheet) {
+  const invoiceNumber = getNextInvoiceNumber(indexSheet);
   setScriptProperty(CONFIG_KEYS.LAST_INVOICE_NUMBER, String(invoiceNumber));
   return invoiceNumber;
 }
@@ -235,4 +294,65 @@ function syncLastInvoiceNumberAtLeast(invoiceNumber) {
   if (invoiceNumber > current) {
     setScriptProperty(CONFIG_KEYS.LAST_INVOICE_NUMBER, String(invoiceNumber));
   }
+}
+
+function getMaxInvoiceNumber(sheet) {
+  const entries = readInvoiceIndexEntries(sheet);
+  if (entries.length === 0) {
+    return null;
+  }
+
+  return entries.reduce(function(maxInvoiceNumber, entry) {
+    return Math.max(maxInvoiceNumber, entry.invoiceNumber);
+  }, 0);
+}
+
+function getInvoiceIndexHealth(spreadsheet) {
+  const sheet = getOrCreateInvoiceIndexSheet(spreadsheet);
+  const entries = readInvoiceIndexEntries(sheet);
+  const seen = {};
+  const duplicateInvoiceNumbers = [];
+
+  entries.forEach(function(entry) {
+    const key = String(entry.invoiceNumber);
+    if (!seen[key]) {
+      seen[key] = [];
+    }
+    seen[key].push(entry);
+  });
+
+  Object.keys(seen).forEach(function(key) {
+    if (seen[key].length > 1) {
+      duplicateInvoiceNumbers.push({
+        invoiceNumber: Number(key),
+        entries: seen[key]
+      });
+    }
+  });
+
+  return {
+    ok: duplicateInvoiceNumbers.length === 0,
+    duplicateInvoiceNumbers: duplicateInvoiceNumbers
+  };
+}
+
+function repairInvoiceIndexEntry(spreadsheet, startDate, endDate, invoiceNumber) {
+  const indexSheet = getOrCreateInvoiceIndexSheet(spreadsheet);
+  const entry = findInvoiceIndexEntry(indexSheet, startDate, endDate);
+  if (!entry) {
+    throw new Error('Could not find invoice index row for ' + dateKey(startDate) + ' to ' + dateKey(endDate) + '.');
+  }
+
+  const duplicate = findInvoiceIndexEntryByNumber(indexSheet, invoiceNumber);
+  if (duplicate && duplicate.row !== entry.row) {
+    throw new Error('Invoice ' + invoiceNumber + ' is already saved for ' + formatIndexPeriodForError(duplicate) + '.');
+  }
+
+  indexSheet.getRange(entry.row, INVOICE_INDEX_COLUMNS.INVOICE_NUMBER).setValue(invoiceNumber);
+  touchInvoiceIndexEntry(indexSheet, entry.row);
+  syncLastInvoiceNumberAtLeast(invoiceNumber);
+}
+
+function formatIndexPeriodForError(entry) {
+  return dateKey(entry.startDate) + ' to ' + dateKey(entry.endDate);
 }

@@ -39,8 +39,8 @@ function parseRosterInvoiceRequest(text, referenceDate) {
     return a.date.getTime() - b.date.getTime();
   });
 
-  const startDate = entries[0].date;
-  const endDate = entries[entries.length - 1].date;
+  const startDate = getWeekStartDate(entries[0].date);
+  const endDate = addDays(getWeekStartDate(entries[entries.length - 1].date), 6);
   const workedByDay = {};
 
   entries.forEach(function(entry) {
@@ -69,19 +69,31 @@ function extractRosterEntries(text, referenceDate) {
   const lines = String(text || '').split(/\r?\n/);
 
   lines.forEach(function(line) {
-    const match = line.trim().match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\s+(.+)$/);
+    const match = line.trim().match(/(?:^|\b)(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\s+(.+)$/);
     if (!match) {
       return;
     }
 
     const date = parseRosterDate(match[1], match[2], match[3], referenceDate);
     const status = match[4].trim();
+    if (/^(?:to|-|until|through)\s+\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/i.test(status)) {
+      return;
+    }
+
+    const parsedStatus = parseRosterStatus(status);
+    const day = dayKeyForDate(date);
     entries.push({
       date: date,
+      weekday: day,
       rawStatus: status,
-      worked: isWorkedRosterStatus(status)
+      worked: parsedStatus.worked,
+      shiftTime: parsedStatus.shiftTime,
+      amountOverride: parsedStatus.amountOverride,
+      uncertain: parsedStatus.uncertain
     });
   });
+
+  applyDayAmountOverrides(entries, lines);
 
   return entries;
 }
@@ -104,12 +116,73 @@ function parseRosterDate(dayValue, monthValue, yearValue, referenceDate) {
 }
 
 function isWorkedRosterStatus(status) {
-  const normalized = String(status || '').trim().toLowerCase();
-  if (!normalized || /^off\b/.test(normalized)) {
-    return false;
+  return parseRosterStatus(status).worked;
+}
+
+function parseRosterStatus(status) {
+  const normalized = String(status || '').trim();
+  const lower = normalized.toLowerCase();
+  const amountOverride = extractAmountOverride(normalized);
+  const shiftTimeMatch = normalized.match(/\b(\d{1,2})\s*:{1,2}\s*(\d{2})\b/);
+  const shiftTime = shiftTimeMatch ?
+    String(Number(shiftTimeMatch[1])).padStart(2, '0') + ':' + shiftTimeMatch[2] :
+    '';
+
+  if (!lower || /^off\b/.test(lower)) {
+    return {
+      worked: false,
+      shiftTime: shiftTime,
+      amountOverride: amountOverride,
+      uncertain: false
+    };
   }
 
-  return /^\d{1,2}\s*:{1,2}\s*\d{2}\b/.test(normalized);
+  if (shiftTime) {
+    return {
+      worked: true,
+      shiftTime: shiftTime,
+      amountOverride: amountOverride,
+      uncertain: false
+    };
+  }
+
+  return {
+    worked: true,
+    shiftTime: '',
+    amountOverride: amountOverride,
+    uncertain: true
+  };
+}
+
+function extractAmountOverride(value) {
+  const match = String(value || '').match(/(?:^|\s)(?:£\s*)?(\d+(?:\.\d{1,2})?)\s*$/);
+  if (!match) {
+    return null;
+  }
+
+  const amount = Number(match[1]);
+  return Number.isFinite(amount) ? amount : null;
+}
+
+function applyDayAmountOverrides(entries, lines) {
+  lines.forEach(function(line) {
+    const match = String(line || '').trim().match(/^([A-Za-z]+)\s*(?:=|:|-)?\s*(?:£\s*)?(\d+(?:\.\d{1,2})?)\s*$/);
+    if (!match) {
+      return;
+    }
+
+    const day = DAY_ALIASES[match[1].toLowerCase()];
+    const amount = Number(match[2]);
+    if (!day || !Number.isFinite(amount)) {
+      return;
+    }
+
+    entries.forEach(function(entry) {
+      if (entry.weekday === day) {
+        entry.amountOverride = amount;
+      }
+    });
+  });
 }
 
 function validateInvoiceDatesAndDays(startDate, endDate, workedDays) {
@@ -120,6 +193,24 @@ function validateInvoiceDatesAndDays(startDate, endDate, workedDays) {
   if (endDate.getTime() < startDate.getTime()) {
     throw new Error('End date cannot be before start date.');
   }
+}
+
+function assertInvoiceReadyForImmediateGeneration(invoice) {
+  return;
+}
+
+function getDayLabel(day) {
+  const labels = {
+    mon: 'Monday',
+    tue: 'Tuesday',
+    wed: 'Wednesday',
+    thu: 'Thursday',
+    fri: 'Friday',
+    sat: 'Saturday',
+    sun: 'Sunday'
+  };
+
+  return labels[day] || String(day || '');
 }
 
 function extractInvoiceNumber(text) {
@@ -198,4 +289,14 @@ function createDate(year, month, day) {
 
 function dayKeyForDate(date) {
   return DAY_ORDER[date.getDay() === 0 ? 6 : date.getDay() - 1];
+}
+
+function getWeekStartDate(date) {
+  const dayOffset = date.getDay() === 0 ? -6 : 1 - date.getDay();
+  return addDays(date, dayOffset);
+}
+
+function addDays(date, days) {
+  const shifted = new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+  return createDate(shifted.getFullYear(), shifted.getMonth() + 1, shifted.getDate());
 }

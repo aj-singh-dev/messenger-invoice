@@ -2,31 +2,32 @@ function handleEmailCommand(message) {
   const argument = String(message.text || '').trim().replace(/^\/email(?:@\w+)?\s*/i, '').trim();
 
   if (!argument) {
-    const current = getEmailRecipientForChat(message.chatId);
-    sendTelegramText(message.chatId, current ?
-      'Current email recipient: ' + current + '\n\nChange it with:\n/email name@example.com\n\nClear it with:\n/email clear' :
-      'No email recipient is set.\n\nSet one with:\n/email name@example.com');
+    const current = getEmailRecipientsForChat(message.chatId);
+    sendTelegramText(message.chatId, current.length ?
+      'Current email recipients:\n' + formatEmailRecipientsForTelegram(current) + '\n\nChange them with:\n/email name@example.com other@example.com\n\nClear them with:\n/email clear' :
+      'No email recipients are set.\n\nSet them with:\n/email name@example.com other@example.com');
     return;
   }
 
   if (/^(clear|remove|off)$/i.test(argument)) {
     clearEmailRecipientForChat(message.chatId);
-    sendTelegramText(message.chatId, 'Email recipient cleared.');
+    sendTelegramText(message.chatId, 'Email recipients cleared.');
     return;
   }
 
-  if (!isValidEmailAddress(argument)) {
-    throw new Error('Invalid email address. Use: /email name@example.com');
+  const recipients = parseEmailRecipientList(argument);
+  if (recipients.length === 0) {
+    throw new Error('Invalid email address. Use: /email name@example.com other@example.com');
   }
 
-  setEmailRecipientForChat(message.chatId, argument);
-  sendTelegramText(message.chatId, 'Email recipient set to: ' + argument);
+  setEmailRecipientsForChat(message.chatId, recipients);
+  sendTelegramText(message.chatId, 'Email recipients set to:\n' + formatEmailRecipientsForTelegram(recipients));
 }
 
 function sendEmailOffer(chatId, invoice) {
-  const recipient = getEmailRecipientForChat(chatId);
-  if (!recipient) {
-    sendTelegramText(chatId, 'No email recipient is set for this chat. Use /email name@example.com to set one.');
+  const recipients = getEmailRecipientsForChat(chatId);
+  if (recipients.length === 0) {
+    sendTelegramText(chatId, 'No email recipients are set for this chat. Use /email name@example.com other@example.com to set them.');
     return;
   }
 
@@ -38,7 +39,8 @@ function sendEmailOffer(chatId, invoice) {
     [
       'Send this invoice by email?',
       '',
-      'To: ' + recipient,
+      'To:',
+      formatEmailRecipientsForTelegram(recipients),
       'Invoice: ' + filename
     ].join('\n'),
     [[
@@ -50,9 +52,9 @@ function sendEmailOffer(chatId, invoice) {
 
 function handleEmailSendCallback(callbackQuery) {
   const payload = parseEmailCallbackData(callbackQuery.data);
-  const recipient = getEmailRecipientForChat(callbackQuery.chatId);
-  if (!recipient) {
-    throw new Error('No email recipient is set. Use /email name@example.com first.');
+  const recipients = getEmailRecipientsForChat(callbackQuery.chatId);
+  if (recipients.length === 0) {
+    throw new Error('No email recipients are set. Use /email name@example.com other@example.com first.');
   }
 
   const spreadsheet = openInvoiceSpreadsheet();
@@ -71,7 +73,7 @@ function handleEmailSendCallback(callbackQuery) {
 
   const filename = entry.driveFilename || file.getName();
   const emailMessage = {
-    to: recipient,
+    to: recipients.join(','),
     subject: buildEmailSubject(entry, filename),
     body: buildEmailBody(filename),
     attachments: [file.getBlob().setName(filename)]
@@ -86,7 +88,7 @@ function handleEmailSendCallback(callbackQuery) {
   editTelegramMessageText(
     callbackQuery.chatId,
     callbackQuery.messageId,
-    'Email sent.\n\nTo: ' + recipient + '\nInvoice: ' + filename
+    'Email sent.\n\nTo:\n' + formatEmailRecipientsForTelegram(recipients) + '\nInvoice: ' + filename
   );
 }
 
@@ -138,12 +140,12 @@ function buildEmailBody(filename) {
   ].join('\n');
 }
 
-function getEmailRecipientForChat(chatId) {
-  return getOptionalProperty(emailRecipientPropertyKey(chatId));
+function getEmailRecipientsForChat(chatId) {
+  return parseEmailRecipientList(getOptionalProperty(emailRecipientPropertyKey(chatId)));
 }
 
-function setEmailRecipientForChat(chatId, email) {
-  setScriptProperty(emailRecipientPropertyKey(chatId), email);
+function setEmailRecipientsForChat(chatId, emails) {
+  setScriptProperty(emailRecipientPropertyKey(chatId), emails.join(','));
 }
 
 function clearEmailRecipientForChat(chatId) {
@@ -152,6 +154,27 @@ function clearEmailRecipientForChat(chatId) {
 
 function emailRecipientPropertyKey(chatId) {
   return 'EMAIL_RECIPIENT_CHAT_' + String(chatId).replace(/[^0-9A-Za-z_-]/g, '_');
+}
+
+function parseEmailRecipientList(value) {
+  return String(value || '')
+    .split(/[,\s;]+/)
+    .map(function(email) {
+      return email.trim();
+    })
+    .filter(Boolean)
+    .filter(function(email, index, emails) {
+      if (!isValidEmailAddress(email)) {
+        throw new Error('Invalid email address: ' + email);
+      }
+      return emails.indexOf(email) === index;
+    });
+}
+
+function formatEmailRecipientsForTelegram(recipients) {
+  return recipients.map(function(recipient) {
+    return '- ' + recipient;
+  }).join('\n');
 }
 
 function isValidEmailAddress(value) {

@@ -98,6 +98,7 @@ function processInboundMessage(message) {
     sendTelegramChatAction(message.chatId, 'typing');
 
     const invoice = parseInvoiceRequest(message.text);
+    assertInvoiceReadyForImmediateGeneration(invoice);
     const spreadsheet = openInvoiceSpreadsheet();
 
     resolveInvoiceNumber(spreadsheet, invoice);
@@ -112,6 +113,7 @@ function processInboundMessage(message) {
     sendTelegramChatAction(message.chatId, 'upload_document');
     const telegramResult = sendTelegramDocument(message.chatId, pdfBlob);
     sendInvoiceSuccessSummary(message.chatId, invoice, pdfBlob.getName());
+    sendInvoiceUncertainStatusNote(message.chatId, invoice);
     sendDelayedEmailOffer(message.chatId, invoice);
 
     markMessageProcessed(message.id);
@@ -188,6 +190,28 @@ function sendInvoiceSuccessSummary(chatId, invoice) {
   sendTelegramText(chatId, [
     'Done. I\'ve created Invoice ' + invoice.invoiceNumber + ' for ' + formatFriendlyDateRange(invoice.startDate, invoice.endDate) + '.',
     ''
+  ].join('\n'));
+}
+
+function sendInvoiceUncertainStatusNote(chatId, invoice) {
+  const uncertainEntries = (invoice.rosterEntries || []).filter(function(entry) {
+    return entry.uncertain;
+  });
+
+  if (uncertainEntries.length === 0) {
+    return;
+  }
+
+  const lines = uncertainEntries.map(function(entry) {
+    return '- ' + getDayLabel(entry.weekday) + ': ' + entry.rawStatus;
+  });
+
+  sendTelegramText(chatId, [
+    'Please check these entries. I counted them as worked at the normal rate:',
+    '',
+    lines.join('\n'),
+    '',
+    'If one needs a special amount, paste the week again with the amount on that day.'
   ].join('\n'));
 }
 

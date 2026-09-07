@@ -36,6 +36,14 @@ function cacheKeyForMessage(messageId) {
 
 function logInvoiceRun(entry) {
   try {
+    if (isTelegramTestModeForAdminChat(entry && entry.message ? entry.message.chatId : '')) {
+      console.log(JSON.stringify({
+        status: entry && entry.status ? entry.status : '',
+        testMode: true
+      }));
+      return;
+    }
+
     const spreadsheetId = getOptionalProperty(CONFIG_KEYS.SPREADSHEET_ID);
     if (!spreadsheetId) {
       console.log(JSON.stringify(entry));
@@ -84,6 +92,18 @@ function logInvoiceRun(entry) {
   }
 }
 
+function isTelegramTestModeForAdminChat(chatId) {
+  if (!isTelegramTestModeEnabled() || !chatId) {
+    return false;
+  }
+
+  return isAdminTelegramChat(chatId);
+}
+
+function isTelegramTestModeEnabled() {
+  return /^(1|true|yes|on)$/i.test(getOptionalProperty(CONFIG_KEYS.TELEGRAM_TEST_MODE));
+}
+
 function getRequiredProperty(key) {
   const value = getOptionalProperty(key);
   if (!value) {
@@ -124,6 +144,23 @@ function jsonResponse(value) {
 }
 
 function buildErrorMessageForChat(chatId, error) {
+  if (error && error.code === 'INVOICE_NUMBER_CONFLICT') {
+    return [
+      'This week is already saved as Invoice ' + error.existingInvoiceNumber +
+        ', but your message says Invoice ' + error.requestedInvoiceNumber + '.',
+      '',
+      'Please check the invoice number and paste the message again.'
+    ].join('\n');
+  }
+
+  if (error && error.code === 'DUPLICATE_INVOICE_NUMBER') {
+    return [
+      'Invoice ' + error.existingInvoiceNumber + ' is already saved for another week.',
+      '',
+      'Please use the next correct invoice number and paste the message again.'
+    ].join('\n');
+  }
+
   const message = 'I could not create the invoice: ' + String(error.message || error);
 
   if (!isAdminTelegramChat(chatId) || !isAuthorizationError(error)) {

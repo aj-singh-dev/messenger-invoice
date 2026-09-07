@@ -14,6 +14,7 @@ const context = {
   Date,
   Error,
   JSON,
+  Math,
   Number,
   Object,
   RegExp,
@@ -93,8 +94,94 @@ const cases = [
     expected: {
       invoiceNumber: 4,
       startDate: '2026-05-18',
-      endDate: '2026-05-20',
+      endDate: '2026-05-24',
       workedDays: ['wed']
+    }
+  },
+  {
+    name: 'Roster date after invoice text on same line',
+    input: 'Invoice 8 8/06 OFF\n9/06 05:00\n10/06 05:00\n14/06 05:00',
+    referenceDate: new Date(2026, 5, 20),
+    expected: {
+      invoiceNumber: 8,
+      startDate: '2026-06-08',
+      endDate: '2026-06-14',
+      workedDays: ['tue', 'wed', 'sun']
+    }
+  },
+  {
+    name: 'Invoice hash number',
+    input: 'Invoice # 9\n8/06 OFF\n9/06 05:00',
+    referenceDate: new Date(2026, 5, 20),
+    expected: {
+      invoiceNumber: 9,
+      startDate: '2026-06-08',
+      endDate: '2026-06-14',
+      workedDays: ['tue']
+    }
+  },
+  {
+    name: 'Invoice pdf suffix number',
+    input: 'Invoice  9 .pdf\n8/06 OFF\n9/06 05:00',
+    referenceDate: new Date(2026, 5, 20),
+    expected: {
+      invoiceNumber: 9,
+      startDate: '2026-06-08',
+      endDate: '2026-06-14',
+      workedDays: ['tue']
+    }
+  },
+  {
+    name: 'Missing OFF Monday still uses full week',
+    input: '25/08 05:00\n26/08 05:00\n29/08 05:00',
+    referenceDate: new Date(2026, 7, 31),
+    expected: {
+      invoiceNumber: null,
+      startDate: '2026-08-24',
+      endDate: '2026-08-30',
+      workedDays: ['tue', 'wed', 'sat']
+    }
+  },
+  {
+    name: 'Unknown status is preserved for review',
+    input: '24/08 OFF\n25/08 PFE\n26/08 05:00',
+    referenceDate: new Date(2026, 7, 31),
+    expected: {
+      invoiceNumber: null,
+      startDate: '2026-08-24',
+      endDate: '2026-08-30',
+      workedDays: ['tue', 'wed']
+    },
+    expectedRosterEntries: [
+      { weekday: 'mon', rawStatus: 'OFF', worked: false, shiftTime: '', amountOverride: null, uncertain: false },
+      { weekday: 'tue', rawStatus: 'PFE', worked: true, shiftTime: '', amountOverride: null, uncertain: true },
+      { weekday: 'wed', rawStatus: '05:00', worked: true, shiftTime: '05:00', amountOverride: null, uncertain: false }
+    ]
+  },
+  {
+    name: 'Amount overrides are preserved',
+    input: '24/08 05:00 £60\n30/08 09:00\nSunday 75',
+    referenceDate: new Date(2026, 7, 31),
+    expected: {
+      invoiceNumber: null,
+      startDate: '2026-08-24',
+      endDate: '2026-08-30',
+      workedDays: ['mon', 'sun']
+    },
+    expectedRosterEntries: [
+      { weekday: 'mon', rawStatus: '05:00 £60', worked: true, shiftTime: '05:00', amountOverride: 60, uncertain: false },
+      { weekday: 'sun', rawStatus: '09:00', worked: true, shiftTime: '09:00', amountOverride: 75, uncertain: false }
+    ]
+  },
+  {
+    name: 'Explicit year boundary dates',
+    input: 'Invoice 20\n29/12/2026 05:00\n01/01/2027 05:00',
+    referenceDate: new Date(2026, 11, 31),
+    expected: {
+      invoiceNumber: 20,
+      startDate: '2026-12-28',
+      endDate: '2027-01-03',
+      workedDays: ['tue', 'fri']
     }
   }
 ];
@@ -151,6 +238,22 @@ cases.forEach((testCase) => {
     };
 
     assertDeepEqual(testCase.name, actual, testCase.expected);
+
+    if (testCase.expectedRosterEntries) {
+      assertDeepEqual(
+        testCase.name + ' roster entries',
+        parsed.rosterEntries.map((entry) => ({
+          weekday: entry.weekday,
+          rawStatus: entry.rawStatus,
+          worked: entry.worked,
+          shiftTime: entry.shiftTime,
+          amountOverride: entry.amountOverride,
+          uncertain: entry.uncertain
+        })),
+        testCase.expectedRosterEntries
+      );
+    }
+
     console.log(`ok - ${testCase.name}`);
   } catch (error) {
     failures += 1;
@@ -178,6 +281,7 @@ telegramCases.forEach((testCase) => {
   }
 });
 
+testImmediateGenerationReadiness();
 testInvoiceIndexResolution();
 
 if (failures > 0) {
@@ -258,6 +362,16 @@ function testInvoiceIndexResolution() {
   context.resolveInvoiceNumber(fakeSpreadsheet, correction);
   assertDeepEqual('Index reuses invoice for correction', correction.invoiceNumber, 4);
 
+  const conflict = {
+    invoiceNumber: 9,
+    startDate: new Date(2026, 4, 18),
+    endDate: new Date(2026, 4, 24),
+    workedDays: ['thu']
+  };
+  assertThrows('Index rejects explicit conflict for same period', () => {
+    context.resolveInvoiceNumber(fakeSpreadsheet, conflict);
+  }, 'INVOICE_NUMBER_CONFLICT');
+
   const next = {
     invoiceNumber: null,
     startDate: new Date(2026, 4, 25),
@@ -273,7 +387,56 @@ function testInvoiceIndexResolution() {
     lastInvoiceNumber: 5
   });
 
+  const duplicate = {
+    invoiceNumber: 4,
+    startDate: new Date(2026, 5, 1),
+    endDate: new Date(2026, 5, 7),
+    workedDays: ['mon']
+  };
+  assertThrows('Index rejects duplicate invoice number across weeks', () => {
+    context.resolveInvoiceNumber(fakeSpreadsheet, duplicate);
+  }, 'DUPLICATE_INVOICE_NUMBER');
+
+  const gap = {
+    invoiceNumber: null,
+    startDate: new Date(2026, 5, 8),
+    endDate: new Date(2026, 5, 14),
+    workedDays: ['mon']
+  };
+  context.resolveInvoiceNumber(fakeSpreadsheet, gap);
+  assertDeepEqual('Index reserves from max index invoice number', {
+    invoiceNumber: gap.invoiceNumber,
+    lastInvoiceNumber
+  }, {
+    invoiceNumber: 6,
+    lastInvoiceNumber: 6
+  });
+
   console.log('ok - Invoice index resolution');
+}
+
+function assertThrows(name, fn, expectedCode) {
+  try {
+    fn();
+  } catch (error) {
+    if (error.code !== expectedCode) {
+      throw new Error(`${name} expected ${expectedCode} but got ${error.code || error.message || error}`);
+    }
+    return;
+  }
+
+  throw new Error(`${name} did not throw`);
+}
+
+function testImmediateGenerationReadiness() {
+  const parsed = context.parseInvoiceRequest(
+    '24/08 OFF\n25/08 PFE\n26/08 05:00',
+    new Date(2026, 7, 31)
+  );
+
+  context.assertInvoiceReadyForImmediateGeneration(parsed);
+
+  console.log('ok - Immediate generation allows unknown roster status');
 }
 
 function createFakeIndexSheet(rows) {

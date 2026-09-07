@@ -39,10 +39,27 @@ function writeWorkedDayRatesToSheet(sheet, invoice) {
     sun: CONFIG_KEYS.SUNDAY_CELL
   };
 
+  const amountOverrides = getAmountOverridesByDay(invoice);
+
   Object.keys(dayCells).forEach(function(day) {
-    const value = invoice.workedDays.indexOf(day) !== -1 ? getRateForDay(day) : '';
+    const value = invoice.workedDays.indexOf(day) !== -1 ?
+      (amountOverrides[day] !== undefined ? amountOverrides[day] : getRateForDay(day)) :
+      '';
     sheet.getRange(getRequiredProperty(dayCells[day])).setValue(value);
   });
+}
+
+function getAmountOverridesByDay(invoice) {
+  const overrides = {};
+  const entries = invoice.rosterEntries || [];
+
+  entries.forEach(function(entry) {
+    if (entry.worked && entry.amountOverride !== null && entry.amountOverride !== undefined) {
+      overrides[entry.weekday || dayKeyForDate(entry.date)] = entry.amountOverride;
+    }
+  });
+
+  return overrides;
 }
 
 function getRateForDay(day) {

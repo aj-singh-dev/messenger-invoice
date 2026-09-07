@@ -104,7 +104,7 @@ YYYY-MM-DD - Workbook Name - Invoice 4.pdf
 
 Corrections for an indexed period replace the previously indexed PDF in that folder.
 
-Set an email recipient from Telegram with `/email name@example.com`. After each PDF is generated, the bot asks whether to email that saved PDF to the configured recipient.
+Set email recipients from Telegram with `/email name@example.com other@example.com`. After each PDF is generated, the bot asks whether to email that saved PDF to the configured recipients.
 
 Turn on a weekly Telegram reminder with `/reminder on`. The reminder asks the chat to send the week's working days every Sunday evening.
 
@@ -136,7 +136,8 @@ Apps Script Script Properties:
 
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_WEBHOOK_SECRET`
-- `TELEGRAM_ALLOWED_CHAT_IDS` optional
+- `TELEGRAM_ALLOWED_CHAT_IDS`
+- `TELEGRAM_TEST_MODE` optional, skips audit rows for `TELEGRAM_ADMIN_CHAT_IDS` while testing
 - `REMINDER_CHAT_IDS` optional, managed by `/reminder`
 - `DRIVE_OUTPUT_FOLDER_ID`
 - all sheet/cell/rate properties listed in `apps-script/README.md`
@@ -145,5 +146,9 @@ Cloudflare Worker variables:
 
 - `APPS_SCRIPT_URL`
 - `TELEGRAM_WEBHOOK_SECRET`
+- `TELEGRAM_ALLOWED_CHAT_IDS`
+- `TELEGRAM_ADMIN_CHAT_IDS` optional, admin chats are also allowed through the Worker
 
 The same `TELEGRAM_WEBHOOK_SECRET` must be used in Apps Script, Cloudflare, and Telegram `setWebhook`.
+
+Use the same `TELEGRAM_ALLOWED_CHAT_IDS` and `TELEGRAM_ADMIN_CHAT_IDS` in Apps Script and Cloudflare. Cloudflare blocks unknown chats before forwarding to Apps Script; Apps Script keeps the same check as a second layer.

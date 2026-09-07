@@ -63,9 +63,13 @@ function validateTelegramWebhook(e) {
 }
 
 function isAllowedTelegramChat(chatId) {
+  if (isAdminTelegramChat(chatId)) {
+    return true;
+  }
+
   const allowed = getOptionalProperty(CONFIG_KEYS.TELEGRAM_ALLOWED_CHAT_IDS);
   if (!allowed) {
-    return true;
+    return false;
   }
 
   const normalizedChatId = String(chatId);

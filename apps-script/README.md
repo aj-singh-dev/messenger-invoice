@@ -40,6 +40,7 @@ Set these in Apps Script under **Project Settings > Script Properties**.
 ```text
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_WEBHOOK_SECRET=choose-a-secret-string
+TELEGRAM_ALLOWED_CHAT_IDS=123456789,-1001234567890
 SPREADSHEET_ID=...
 DRIVE_OUTPUT_FOLDER_ID=...
 INPUT_SHEET_NAME=...
@@ -62,13 +63,15 @@ LAST_INVOICE_NUMBER=...
 Optional:
 
 ```text
-TELEGRAM_ALLOWED_CHAT_IDS=123456789,-1001234567890
 TELEGRAM_ADMIN_CHAT_IDS=123456789
+TELEGRAM_TEST_MODE=false
 ```
 
-If `TELEGRAM_ALLOWED_CHAT_IDS` is set, only those Telegram chats can use the bot. Send `/id` to the bot to get the current chat ID.
+`TELEGRAM_ALLOWED_CHAT_IDS` is required for the actual user. Admin chats listed in `TELEGRAM_ADMIN_CHAT_IDS` are also allowed automatically. Use the same allowlist/admin values in Cloudflare Worker variables so unknown chats are blocked before they reach Apps Script.
 
 If `TELEGRAM_ADMIN_CHAT_IDS` is set, those chats can use `/auth` to request a Google authorization URL. Keep this restricted to the developer/admin chat.
+
+Set `TELEGRAM_TEST_MODE=true` while testing if you do not want admin chat activity written to the `Invoice Runs` audit sheet. Only chats listed in `TELEGRAM_ADMIN_CHAT_IDS` can skip audit rows.
 
 ## Telegram Message Format
 
@@ -86,7 +89,7 @@ Hi,
 PLEASE CONFIRM
 ```
 
-The parser treats `OFF` as not worked and any time-like value such as `10:00` or `11::00` as worked. Dates without a year use the current year.
+The parser treats `OFF` as not worked and any time-like value such as `10:00` or `11::00` as worked. It infers the full Monday-to-Sunday invoice week around roster dates, so omitting an OFF day does not create a different period. Dates without a year use the current year.
 
 The older explicit week/day format is still supported:
 
@@ -108,8 +111,9 @@ Worked: Mon Wed Sat Sun
 Invoice numbers are resolved through an `Invoice Index` sheet tab.
 
 - If the invoice period already exists in `Invoice Index`, the script reuses that invoice number.
-- If the message includes an explicit invoice number, the script writes or updates the period in `Invoice Index`.
-- If the invoice period is newer than the latest indexed period, the script reserves `LAST_INVOICE_NUMBER + 1`, writes the period to `Invoice Index`, and updates `LAST_INVOICE_NUMBER`.
+- If the invoice period already exists and the message includes a different invoice number, the script stops and asks you to check the number instead of silently choosing one.
+- If the message includes an explicit invoice number for a new period, the script writes it to `Invoice Index` only if that invoice number is not already used by another period.
+- If the invoice period is newer than the latest indexed period, the script reserves the highest invoice number in `Invoice Index` plus one, writes the period to `Invoice Index`, and updates `LAST_INVOICE_NUMBER` as a fallback.
 - If the index is empty, or the message is for an older unindexed period, the script refuses to guess and asks for an explicit invoice number once.
 
 This prevents corrections to older weeks from accidentally incrementing the invoice sequence.
@@ -168,6 +172,12 @@ Set the email recipient from Telegram:
 /email name@example.com
 ```
 
+Set multiple recipients:
+
+```text
+/email first@example.com second@example.com
+```
+
 Show the current recipient:
 
 ```text
@@ -180,7 +190,7 @@ Clear it:
 /email clear
 ```
 
-After every generated PDF, the bot asks whether to email it and shows the recipient and invoice filename. The Send button emails the saved Drive PDF attachment. The Skip button dismisses the prompt.
+After every generated PDF, the bot asks whether to email it and shows the recipient list and invoice filename. The Send button emails the saved Drive PDF attachment. The Skip button dismisses the prompt.
 
 Optional script property:
 
