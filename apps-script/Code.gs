@@ -327,6 +327,10 @@ function processCallbackQuery(callbackQuery) {
 }
 
 function sendDelayedEmailOffer(chatId, invoice) {
+  if (!areEmailOptionsEnabled()) {
+    return;
+  }
+
   sendTelegramChatAction(chatId, 'typing');
   Utilities.sleep(500);
   sendEmailOffer(chatId, invoice);
