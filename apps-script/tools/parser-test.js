@@ -332,6 +332,9 @@ testInvoiceReviewMessage();
 testInvoiceReviewDayUpdate();
 testInvoiceReviewInvoiceNumberUpdate();
 testInvoiceReviewWeekShift();
+testEmailMessageBuild();
+testManualEmailPdfUrl();
+testEmailOptionsEnabled();
 testImmediateGenerationReadiness();
 testInvoiceIndexResolution();
 
@@ -684,6 +687,117 @@ function testInvoiceReviewWeekShift() {
   });
 
   console.log('ok - Invoice review week shift');
+}
+
+function testEmailMessageBuild() {
+  const previousGetOptionalProperty = context.getOptionalProperty;
+  context.getOptionalProperty = (key) => key === 'EMAIL_SENDER_NAME' ? 'Invoice Sender' : '';
+
+  try {
+    const file = {
+      getBlob() {
+        return {
+          setName(name) {
+            return { name };
+          }
+        };
+      }
+    };
+    const entry = {
+      invoiceNumber: 17,
+      startDate: new Date(2026, 7, 24),
+      endDate: new Date(2026, 7, 30)
+    };
+    const message = context.buildEmailMessage(
+      ['first@example.com', 'second@example.com'],
+      entry,
+      file,
+      '2026-08-24 - Invoice 17.pdf'
+    );
+
+    assertDeepEqual('Email message build', {
+      to: message.to,
+      subject: message.subject,
+      hasAttachment: message.attachments.length === 1,
+      attachmentName: message.attachments[0].name,
+      name: message.name
+    }, {
+      to: 'first@example.com,second@example.com',
+      subject: 'Invoice 17 - 2026-08-24 to 2026-08-30',
+      hasAttachment: true,
+      attachmentName: '2026-08-24 - Invoice 17.pdf',
+      name: 'Invoice Sender'
+    });
+
+    console.log('ok - Email message build');
+  } finally {
+    context.getOptionalProperty = previousGetOptionalProperty;
+  }
+}
+
+function testManualEmailPdfUrl() {
+  const previousGetOptionalProperty = context.getOptionalProperty;
+  const previousDriveApp = context.DriveApp;
+  let shared = false;
+
+  const file = {
+    setSharing(access, permission) {
+      shared = access === 'anyone' && permission === 'view';
+    },
+    getUrl() {
+      return 'https://drive.google.com/file/d/test/view';
+    }
+  };
+
+  context.DriveApp = {
+    Access: {
+      ANYONE_WITH_LINK: 'anyone'
+    },
+    Permission: {
+      VIEW: 'view'
+    }
+  };
+
+  try {
+    context.getOptionalProperty = () => '';
+    assertDeepEqual('Manual email PDF URL disabled', {
+      url: context.prepareManualEmailPdfUrl(file),
+      shared: shared
+    }, {
+      url: '',
+      shared: false
+    });
+
+    context.getOptionalProperty = (key) => key === 'EMAIL_MANUAL_DRIVE_LINK_ENABLED' ? 'true' : '';
+    assertDeepEqual('Manual email PDF URL enabled', {
+      url: context.prepareManualEmailPdfUrl(file),
+      shared: shared
+    }, {
+      url: 'https://drive.google.com/file/d/test/view',
+      shared: true
+    });
+
+    console.log('ok - Manual email PDF URL');
+  } finally {
+    context.getOptionalProperty = previousGetOptionalProperty;
+    context.DriveApp = previousDriveApp;
+  }
+}
+
+function testEmailOptionsEnabled() {
+  const previousGetOptionalProperty = context.getOptionalProperty;
+
+  try {
+    context.getOptionalProperty = () => '';
+    assertDeepEqual('Email options disabled by default', context.areEmailOptionsEnabled(), false);
+
+    context.getOptionalProperty = (key) => key === 'EMAIL_OPTIONS_ENABLED' ? 'true' : '';
+    assertDeepEqual('Email options enabled by property', context.areEmailOptionsEnabled(), true);
+
+    console.log('ok - Email options enabled flag');
+  } finally {
+    context.getOptionalProperty = previousGetOptionalProperty;
+  }
 }
 
 function monthName(date) {

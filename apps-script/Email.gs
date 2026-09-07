@@ -25,6 +25,10 @@ function handleEmailCommand(message) {
 }
 
 function sendEmailOffer(chatId, invoice) {
+  if (!areEmailOptionsEnabled()) {
+    return;
+  }
+
   const recipients = getEmailRecipientsForChat(chatId);
   if (recipients.length === 0) {
     sendTelegramText(chatId, 'No email recipients are set for this chat. Use /email name@example.com other@example.com to set them.');
@@ -37,17 +41,65 @@ function sendEmailOffer(chatId, invoice) {
   sendTelegramTextWithInlineKeyboard(
     chatId,
     [
-      'Send this invoice by email?',
+      'How should this invoice be emailed?',
       '',
       'To:',
       formatEmailRecipientsForTelegram(recipients),
       'Invoice: ' + filename
     ].join('\n'),
-    [[
-      { text: 'Send email', callback_data: 'email_send|' + callbackSuffix },
-      { text: 'Skip', callback_data: 'email_skip|' + callbackSuffix }
-    ]]
+    [
+      [{ text: 'Create Gmail draft', callback_data: 'email_draft|' + callbackSuffix }],
+      [{ text: 'Manual send', callback_data: 'email_manual|' + callbackSuffix }],
+      [
+        { text: 'Send directly', callback_data: 'email_send|' + callbackSuffix },
+        { text: 'Skip', callback_data: 'email_skip|' + callbackSuffix }
+      ]
+    ]
   );
+}
+
+function handleEmailManualCallback(callbackQuery) {
+  const payload = parseEmailCallbackData(callbackQuery.data);
+  const recipients = getEmailRecipientsForChat(callbackQuery.chatId);
+  if (recipients.length === 0) {
+    throw new Error('No email recipients are set. Use /email name@example.com other@example.com first.');
+  }
+
+  const invoiceFile = getSavedInvoiceFileForEmail(payload.startDate, payload.endDate);
+  const entry = invoiceFile.entry;
+  const file = invoiceFile.file;
+  const filename = entry.driveFilename || file.getName();
+  const subject = buildEmailSubject(entry, filename);
+  const body = buildEmailBody(filename);
+  const openPdfUrl = prepareManualEmailPdfUrl(file);
+  const text = [
+    'Manual email details',
+    '',
+    'To:',
+    recipients.join(', '),
+    '',
+    'Subject:',
+    subject,
+    '',
+    'Body:',
+    body,
+    '',
+    openPdfUrl ?
+      'Open the PDF, use iOS Share, choose Mail, then paste the details above.' :
+      'PDF sharing link is disabled. Open the PDF from the Telegram attachment, then use iOS Share and paste the details above.'
+  ].join('\n');
+
+  if (openPdfUrl) {
+    editTelegramMessageTextWithInlineKeyboard(
+      callbackQuery.chatId,
+      callbackQuery.messageId,
+      text,
+      [[{ text: 'Open PDF', url: openPdfUrl }]]
+    );
+    return;
+  }
+
+  editTelegramMessageText(callbackQuery.chatId, callbackQuery.messageId, text);
 }
 
 function handleEmailSendCallback(callbackQuery) {
@@ -57,38 +109,51 @@ function handleEmailSendCallback(callbackQuery) {
     throw new Error('No email recipients are set. Use /email name@example.com other@example.com first.');
   }
 
-  const spreadsheet = openInvoiceSpreadsheet();
-  const indexSheet = getOrCreateInvoiceIndexSheet(spreadsheet);
-  const entry = findInvoiceIndexEntry(indexSheet, payload.startDate, payload.endDate);
-
-  if (!entry || !entry.driveFileId) {
-    throw new Error('Could not find the saved invoice PDF for this period.');
-  }
-
-  const file = DriveApp.getFileById(entry.driveFileId);
-  const outputFolderId = getRequiredProperty(CONFIG_KEYS.DRIVE_OUTPUT_FOLDER_ID);
-  if (!driveFileHasParent(file, outputFolderId)) {
-    throw new Error('Refusing to email an invoice PDF outside DRIVE_OUTPUT_FOLDER_ID.');
-  }
-
+  const invoiceFile = getSavedInvoiceFileForEmail(payload.startDate, payload.endDate);
+  const entry = invoiceFile.entry;
+  const file = invoiceFile.file;
   const filename = entry.driveFilename || file.getName();
-  const emailMessage = {
-    to: recipients.join(','),
-    subject: buildEmailSubject(entry, filename),
-    body: buildEmailBody(filename),
-    attachments: [file.getBlob().setName(filename)]
-  };
-  const senderName = getOptionalProperty(CONFIG_KEYS.EMAIL_SENDER_NAME);
-  if (senderName) {
-    emailMessage.name = senderName;
-  }
 
-  MailApp.sendEmail(emailMessage);
+  MailApp.sendEmail(buildEmailMessage(recipients, entry, file, filename));
 
   editTelegramMessageText(
     callbackQuery.chatId,
     callbackQuery.messageId,
     'Email sent.\n\nTo:\n' + formatEmailRecipientsForTelegram(recipients) + '\nInvoice: ' + filename
+  );
+}
+
+function handleEmailDraftCallback(callbackQuery) {
+  const payload = parseEmailCallbackData(callbackQuery.data);
+  const recipients = getEmailRecipientsForChat(callbackQuery.chatId);
+  if (recipients.length === 0) {
+    throw new Error('No email recipients are set. Use /email name@example.com other@example.com first.');
+  }
+
+  const invoiceFile = getSavedInvoiceFileForEmail(payload.startDate, payload.endDate);
+  const entry = invoiceFile.entry;
+  const file = invoiceFile.file;
+  const filename = entry.driveFilename || file.getName();
+  const emailMessage = buildEmailMessage(recipients, entry, file, filename);
+
+  GmailApp.createDraft(
+    emailMessage.to,
+    emailMessage.subject,
+    emailMessage.body,
+    {
+      attachments: emailMessage.attachments,
+      name: emailMessage.name
+    }
+  );
+
+  editTelegramMessageTextWithInlineKeyboard(
+    callbackQuery.chatId,
+    callbackQuery.messageId,
+    'Gmail draft created with the PDF attached.\n\nTo:\n' +
+      formatEmailRecipientsForTelegram(recipients) +
+      '\nInvoice: ' + filename +
+      '\n\nOpen Gmail Drafts, review it, and send it from your mailbox.',
+    [[{ text: 'Open Gmail Drafts', url: 'https://mail.google.com/mail/u/0/#drafts' }]]
   );
 }
 
@@ -104,6 +169,59 @@ function handleEmailSkipCallback(callbackQuery) {
     callbackQuery.messageId,
     'Email skipped.\n\nInvoice: ' + filename
   );
+}
+
+function getSavedInvoiceFileForEmail(startDate, endDate) {
+  const spreadsheet = openInvoiceSpreadsheet();
+  const indexSheet = getOrCreateInvoiceIndexSheet(spreadsheet);
+  const entry = findInvoiceIndexEntry(indexSheet, startDate, endDate);
+
+  if (!entry || !entry.driveFileId) {
+    throw new Error('Could not find the saved invoice PDF for this period.');
+  }
+
+  const file = DriveApp.getFileById(entry.driveFileId);
+  const outputFolderId = getRequiredProperty(CONFIG_KEYS.DRIVE_OUTPUT_FOLDER_ID);
+  if (!driveFileHasParent(file, outputFolderId)) {
+    throw new Error('Refusing to email an invoice PDF outside DRIVE_OUTPUT_FOLDER_ID.');
+  }
+
+  return {
+    entry: entry,
+    file: file
+  };
+}
+
+function buildEmailMessage(recipients, entry, file, filename) {
+  const emailMessage = {
+    to: recipients.join(','),
+    subject: buildEmailSubject(entry, filename),
+    body: buildEmailBody(filename),
+    attachments: [file.getBlob().setName(filename)]
+  };
+  const senderName = getOptionalProperty(CONFIG_KEYS.EMAIL_SENDER_NAME);
+  if (senderName) {
+    emailMessage.name = senderName;
+  }
+
+  return emailMessage;
+}
+
+function prepareManualEmailPdfUrl(file) {
+  if (!isManualDriveLinkEnabled()) {
+    return '';
+  }
+
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  return file.getUrl();
+}
+
+function isManualDriveLinkEnabled() {
+  return /^true$/i.test(String(getOptionalProperty(CONFIG_KEYS.EMAIL_MANUAL_DRIVE_LINK_ENABLED) || '').trim());
+}
+
+function areEmailOptionsEnabled() {
+  return /^true$/i.test(String(getOptionalProperty(CONFIG_KEYS.EMAIL_OPTIONS_ENABLED) || '').trim());
 }
 
 function parseEmailCallbackData(data) {

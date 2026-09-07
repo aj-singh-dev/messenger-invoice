@@ -107,7 +107,7 @@ YYYY-MM-DD - Workbook Name - Invoice 4.pdf
 
 Corrections for an indexed period replace the previously indexed PDF in that folder.
 
-Set email recipients from Telegram with `/email name@example.com other@example.com`. After each PDF is generated from the review, the bot asks whether to email that saved PDF to the configured recipients.
+Set email recipients from Telegram with `/email name@example.com other@example.com`. After each PDF is generated from the review, the bot can create a Gmail draft with the saved PDF attached, show manual email details for iOS sharing, send it directly, or skip email.
 
 Turn on a weekly Telegram reminder with `/reminder on`. The reminder asks the chat to send the week's working days every Sunday evening.
 

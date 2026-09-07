@@ -163,6 +163,12 @@ Email sending requires the Apps Script send-mail scope:
 https://www.googleapis.com/auth/script.send_mail
 ```
 
+Creating Gmail drafts with PDF attachments requires:
+
+```text
+https://mail.google.com/
+```
+
 Weekly reminders create an Apps Script time trigger and require:
 
 ```text
@@ -205,7 +211,17 @@ Clear it:
 /email clear
 ```
 
-After every generated PDF, the bot asks whether to email it and shows the recipient list and invoice filename. The Send button emails the saved Drive PDF attachment. The Skip button dismisses the prompt.
+Email options are hidden by default. To show the post-PDF email buttons, set:
+
+```text
+EMAIL_OPTIONS_ENABLED=true
+```
+
+When enabled, after every generated PDF, the bot asks how to email it and shows the recipient list and invoice filename.
+
+- **Create Gmail draft** creates a draft in the deploying user's Gmail account with the saved PDF attached. Review and send it manually from Gmail. This is the preferred option when direct automated mail is likely to look less trustworthy to the recipient.
+- **Send directly** emails the saved Drive PDF attachment immediately through Apps Script.
+- **Skip** dismisses the prompt.
 
 Optional script property:
 
@@ -214,6 +230,16 @@ EMAIL_SENDER_NAME=Invoice Sender
 ```
 
 When set, Apps Script asks Google to use this display name on outgoing invoice emails.
+
+Optional manual-send property:
+
+```text
+EMAIL_MANUAL_DRIVE_LINK_ENABLED=false
+```
+
+When set to `true`, the **Manual send** button shares the saved invoice PDF as view-only to anyone with the link and adds an **Open PDF** button. This is useful on iPhone when Telegram will not preview the PDF until it is downloaded. Leave it disabled if you do not want invoice PDFs exposed by link.
+
+If the bot reports that authorization is required after this feature is deployed, send `/auth` from an admin chat and approve the updated Gmail permission.
 
 ## Weekly Reminders
 

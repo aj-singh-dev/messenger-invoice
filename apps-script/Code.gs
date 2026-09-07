@@ -147,6 +147,20 @@ function processCallbackQuery(callbackQuery) {
       return;
     }
 
+    if (callbackQuery.data.indexOf('email_draft|') === 0) {
+      answerTelegramCallbackQuery(callbackQuery.callbackQueryId, 'Creating Gmail draft...');
+      handleEmailDraftCallback(callbackQuery);
+      markMessageProcessed(callbackQuery.id);
+      return;
+    }
+
+    if (callbackQuery.data.indexOf('email_manual|') === 0) {
+      answerTelegramCallbackQuery(callbackQuery.callbackQueryId, 'Preparing manual email...');
+      handleEmailManualCallback(callbackQuery);
+      markMessageProcessed(callbackQuery.id);
+      return;
+    }
+
     if (callbackQuery.data.indexOf('email_skip|') === 0) {
       answerTelegramCallbackQuery(callbackQuery.callbackQueryId, 'Skipped');
       handleEmailSkipCallback(callbackQuery);
