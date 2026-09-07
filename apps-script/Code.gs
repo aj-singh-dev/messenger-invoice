@@ -200,6 +200,38 @@ function processCallbackQuery(callbackQuery) {
       return;
     }
 
+    if (callbackQuery.data.indexOf('review_change|') === 0) {
+      answerTelegramCallbackQuery(callbackQuery.callbackQueryId, 'Choose what to change');
+      handleInvoiceReviewChangeCallback(callbackQuery);
+      markMessageProcessed(callbackQuery.id);
+      logInvoiceRun({
+        message: {
+          chatId: callbackQuery.chatId,
+          from: callbackQuery.from,
+          id: callbackQuery.id,
+          text: callbackQuery.data
+        },
+        status: 'review_change'
+      });
+      return;
+    }
+
+    if (callbackQuery.data.indexOf('review_back|') === 0) {
+      answerTelegramCallbackQuery(callbackQuery.callbackQueryId, 'Back to review');
+      handleInvoiceReviewBackCallback(callbackQuery);
+      markMessageProcessed(callbackQuery.id);
+      logInvoiceRun({
+        message: {
+          chatId: callbackQuery.chatId,
+          from: callbackQuery.from,
+          id: callbackQuery.id,
+          text: callbackQuery.data
+        },
+        status: 'review_back'
+      });
+      return;
+    }
+
     if (callbackQuery.data.indexOf('review_edit_invoice|') === 0) {
       answerTelegramCallbackQuery(callbackQuery.callbackQueryId, 'Reply with the invoice number');
       handleInvoiceReviewEditInvoiceNumberCallback(callbackQuery);

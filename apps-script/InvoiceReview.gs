@@ -1,6 +1,7 @@
 function createInvoiceReviewForMessage(message) {
   const invoice = parseInvoiceRequest(message.text);
   assertInvoiceReadyForImmediateGeneration(invoice);
+  invoice.manualInvoiceNumber = Boolean(invoice.invoiceNumber);
 
   const spreadsheet = openInvoiceSpreadsheet();
   previewInvoiceNumber(spreadsheet, invoice);
@@ -35,6 +36,7 @@ function createInvoiceReviewForMessage(message) {
 function handleInvoiceReviewCreateCallback(callbackQuery) {
   const review = getInvoiceReviewFromCallback(callbackQuery);
   const invoice = deserializeInvoiceReviewInvoice(review.invoice);
+  clearInvoiceReviewEdit(callbackQuery.chatId);
 
   editTelegramMessageText(
     callbackQuery.chatId,
@@ -49,6 +51,7 @@ function handleInvoiceReviewCreateCallback(callbackQuery) {
 function handleInvoiceReviewCancelCallback(callbackQuery) {
   const review = getInvoiceReviewFromCallback(callbackQuery);
   const invoice = deserializeInvoiceReviewInvoice(review.invoice);
+  clearInvoiceReviewEdit(callbackQuery.chatId);
 
   editTelegramMessageText(
     callbackQuery.chatId,
@@ -61,12 +64,37 @@ function handleInvoiceReviewCancelCallback(callbackQuery) {
 
 function handleInvoiceReviewEditDayCallback(callbackQuery) {
   const review = getInvoiceReviewFromCallback(callbackQuery);
+  clearInvoiceReviewEdit(callbackQuery.chatId);
 
   editTelegramMessageTextWithInlineKeyboard(
     callbackQuery.chatId,
     callbackQuery.messageId,
     buildInvoiceReviewMessage(deserializeInvoiceReviewInvoice(review.invoice)),
     buildInvoiceReviewDayKeyboard(review.token)
+  );
+}
+
+function handleInvoiceReviewChangeCallback(callbackQuery) {
+  const review = getInvoiceReviewFromCallback(callbackQuery);
+  clearInvoiceReviewEdit(callbackQuery.chatId);
+
+  editTelegramMessageTextWithInlineKeyboard(
+    callbackQuery.chatId,
+    callbackQuery.messageId,
+    buildInvoiceReviewMessage(deserializeInvoiceReviewInvoice(review.invoice)),
+    buildInvoiceReviewChangeKeyboard(review.token)
+  );
+}
+
+function handleInvoiceReviewBackCallback(callbackQuery) {
+  const review = getInvoiceReviewFromCallback(callbackQuery);
+  clearInvoiceReviewEdit(callbackQuery.chatId);
+
+  editTelegramMessageTextWithInlineKeyboard(
+    callbackQuery.chatId,
+    callbackQuery.messageId,
+    buildInvoiceReviewMessage(deserializeInvoiceReviewInvoice(review.invoice)),
+    buildInvoiceReviewKeyboard(review.token)
   );
 }
 
@@ -103,6 +131,7 @@ function handleInvoiceReviewSelectDayCallback(callbackQuery) {
 function handleInvoiceReviewEditInvoiceNumberCallback(callbackQuery) {
   const review = getInvoiceReviewFromCallback(callbackQuery);
   const invoice = deserializeInvoiceReviewInvoice(review.invoice);
+  clearInvoiceReviewEdit(callbackQuery.chatId);
 
   storeInvoiceReviewEdit({
     chatId: callbackQuery.chatId,
@@ -123,6 +152,7 @@ function handleInvoiceReviewEditInvoiceNumberCallback(callbackQuery) {
 function handleInvoiceReviewShiftWeekCallback(callbackQuery, dayOffset) {
   const review = getInvoiceReviewFromCallback(callbackQuery);
   const invoice = deserializeInvoiceReviewInvoice(review.invoice);
+  clearInvoiceReviewEdit(callbackQuery.chatId);
 
   shiftInvoiceReviewWeek(invoice, dayOffset);
   previewInvoiceNumber(openInvoiceSpreadsheet(), invoice);
@@ -151,8 +181,19 @@ function handlePendingInvoiceReviewEditMessage(message) {
   }
 
   const invoice = deserializeInvoiceReviewInvoice(review.invoice);
+  let changed = true;
   if (edit.type === 'invoice_number') {
-    updateInvoiceReviewInvoiceNumber(invoice, message.text);
+    if (!isInvoiceReviewInvoiceNumberReply(message.text)) {
+      clearInvoiceReviewEdit(message.chatId);
+      if (isLikelyNewInvoiceRequestMessage(message.text)) {
+        return false;
+      }
+
+      sendTelegramText(message.chatId, 'Reply with just the invoice number, for example 18.');
+      return true;
+    }
+
+    changed = updateInvoiceReviewInvoiceNumber(invoice, message.text);
   } else {
     updateInvoiceReviewDay(invoice, edit.day, message.text);
   }
@@ -161,7 +202,7 @@ function handlePendingInvoiceReviewEditMessage(message) {
   storeInvoiceReview(review);
   clearInvoiceReviewEdit(message.chatId);
 
-  if (review.reviewMessageId) {
+  if (changed && review.reviewMessageId) {
     editTelegramMessageTextWithInlineKeyboard(
       message.chatId,
       review.reviewMessageId,
@@ -171,7 +212,7 @@ function handlePendingInvoiceReviewEditMessage(message) {
   }
 
   sendTelegramText(message.chatId, edit.type === 'invoice_number' ?
-    'Updated invoice number.' :
+    (changed ? 'Updated invoice number.' : 'Invoice number is already ' + invoice.invoiceNumber + '.') :
     'Updated ' + getDayLabel(edit.day) + '.');
   return true;
 }
@@ -194,7 +235,7 @@ function createAndSendInvoiceFromReview(chatId, invoice) {
   saveInvoicePdf(spreadsheet, invoice, pdfBlob);
   sendTelegramChatAction(chatId, 'upload_document');
   const telegramResult = sendTelegramDocument(chatId, pdfBlob);
-  sendInvoiceSuccessSummary(chatId, invoice, pdfBlob.getName());
+  // sendInvoiceSuccessSummary(chatId, invoice, pdfBlob.getName());
   sendInvoiceUncertainStatusNote(chatId, invoice);
   sendDelayedEmailOffer(chatId, invoice);
 
@@ -252,9 +293,28 @@ function updateInvoiceReviewInvoiceNumber(invoice, value) {
     throw new Error('Invoice number must be greater than zero.');
   }
 
+  if (Number(invoice.invoiceNumber) === invoiceNumber && invoice.manualInvoiceNumber) {
+    return false;
+  }
+
   invoice.invoiceNumber = invoiceNumber;
   invoice.generatedInvoiceNumber = false;
+  invoice.manualInvoiceNumber = true;
   previewInvoiceNumber(openInvoiceSpreadsheet(), invoice);
+  return true;
+}
+
+function isInvoiceReviewInvoiceNumberReply(value) {
+  return /^\d+$/.test(String(value || '').trim());
+}
+
+function isLikelyNewInvoiceRequestMessage(value) {
+  try {
+    parseInvoiceRequest(String(value || ''));
+    return true;
+  } catch (error) {
+    return false;
+  }
 }
 
 function shiftInvoiceReviewWeek(invoice, dayOffset) {
@@ -264,7 +324,7 @@ function shiftInvoiceReviewWeek(invoice, dayOffset) {
   invoice.driveFileId = '';
   invoice.driveFilename = '';
 
-  if (invoice.generatedInvoiceNumber) {
+  if (!invoice.manualInvoiceNumber) {
     invoice.invoiceNumber = null;
   }
 
@@ -398,15 +458,21 @@ function getRosterEntriesByDay(invoice) {
 
 function buildInvoiceReviewKeyboard(token) {
   return [
-    [{ text: 'Create PDF', callback_data: 'review_create|' + token }],
-    [
-      { text: 'Edit day', callback_data: 'review_edit_day|' + token },
-      { text: 'Invoice number', callback_data: 'review_edit_invoice|' + token }
-    ],
-    [
-      { text: 'Week -7 days', callback_data: 'review_shift_prev|' + token },
-      { text: 'Week +7 days', callback_data: 'review_shift_next|' + token }
-    ],
+    [{ text: 'Cancel', callback_data: 'review_cancel|' + token }],
+    [{ text: 'Change', callback_data: 'review_change|' + token }],
+    [{ text: 'Create PDF', callback_data: 'review_create|' + token }]
+  ];
+}
+
+function buildInvoiceReviewChangeKeyboard(token) {
+  return [
+    [{ text: 'Change day', callback_data: 'review_edit_day|' + token }],
+    [{ text: 'Invoice number', callback_data: 'review_edit_invoice|' + token }],
+    // [
+    //   { text: 'Week -7 days', callback_data: 'review_shift_prev|' + token },
+    //   { text: 'Week +7 days', callback_data: 'review_shift_next|' + token }
+    // ],
+    [{ text: 'Back', callback_data: 'review_back|' + token }],
     [{ text: 'Cancel', callback_data: 'review_cancel|' + token }]
   ];
 }

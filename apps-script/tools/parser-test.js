@@ -329,8 +329,10 @@ callbackCases.forEach((testCase) => {
 });
 
 testInvoiceReviewMessage();
+testInvoiceReviewKeyboard();
 testInvoiceReviewDayUpdate();
 testInvoiceReviewInvoiceNumberUpdate();
+testInvoiceReviewPendingInvoiceNumberRouting();
 testInvoiceReviewWeekShift();
 testEmailMessageBuild();
 testManualEmailPdfUrl();
@@ -416,15 +418,45 @@ function testInvoiceIndexResolution() {
   context.resolveInvoiceNumber(fakeSpreadsheet, correction);
   assertDeepEqual('Index reuses invoice for correction', correction.invoiceNumber, 4);
 
-  const conflict = {
+  const renumberPreview = {
     invoiceNumber: 9,
+    manualInvoiceNumber: true,
     startDate: new Date(2026, 4, 18),
     endDate: new Date(2026, 4, 24),
     workedDays: ['thu']
   };
-  assertThrows('Index rejects explicit conflict for same period', () => {
-    context.resolveInvoiceNumber(fakeSpreadsheet, conflict);
-  }, 'INVOICE_NUMBER_CONFLICT');
+  context.previewInvoiceNumber(fakeSpreadsheet, renumberPreview);
+  assertDeepEqual('Index previews manual renumber for same period', {
+    invoiceNumber: renumberPreview.invoiceNumber,
+    indexRow: renumberPreview.indexRow,
+    indexRows: indexRows.slice(1).map(summarizeIndexRow)
+  }, {
+    invoiceNumber: 9,
+    indexRow: 2,
+    indexRows: [
+      ['2026-05-18', '2026-05-24', 4]
+    ]
+  });
+
+  const renumber = {
+    invoiceNumber: 9,
+    manualInvoiceNumber: true,
+    startDate: new Date(2026, 4, 18),
+    endDate: new Date(2026, 4, 24),
+    workedDays: ['thu']
+  };
+  context.resolveInvoiceNumber(fakeSpreadsheet, renumber);
+  assertDeepEqual('Index allows manual renumber for same period', {
+    invoiceNumber: renumber.invoiceNumber,
+    indexRows: indexRows.slice(1).map(summarizeIndexRow),
+    lastInvoiceNumber
+  }, {
+    invoiceNumber: 9,
+    indexRows: [
+      ['2026-05-18', '2026-05-24', 9]
+    ],
+    lastInvoiceNumber: 9
+  });
 
   const next = {
     invoiceNumber: null,
@@ -445,10 +477,10 @@ function testInvoiceIndexResolution() {
     indexRows: indexRows.length,
     lastInvoiceNumber
   }, {
-    invoiceNumber: 5,
+    invoiceNumber: 10,
     generatedInvoiceNumber: true,
     indexRows: 2,
-    lastInvoiceNumber: 4
+    lastInvoiceNumber: 9
   });
 
   context.resolveInvoiceNumber(fakeSpreadsheet, next);
@@ -456,12 +488,12 @@ function testInvoiceIndexResolution() {
     invoiceNumber: next.invoiceNumber,
     lastInvoiceNumber
   }, {
-    invoiceNumber: 5,
-    lastInvoiceNumber: 5
+    invoiceNumber: 10,
+    lastInvoiceNumber: 10
   });
 
   const duplicate = {
-    invoiceNumber: 4,
+    invoiceNumber: 9,
     startDate: new Date(2026, 5, 1),
     endDate: new Date(2026, 5, 7),
     workedDays: ['mon']
@@ -481,8 +513,8 @@ function testInvoiceIndexResolution() {
     invoiceNumber: gap.invoiceNumber,
     lastInvoiceNumber
   }, {
-    invoiceNumber: 6,
-    lastInvoiceNumber: 6
+    invoiceNumber: 11,
+    lastInvoiceNumber: 11
   });
 
   console.log('ok - Invoice index resolution');
@@ -565,6 +597,23 @@ function testInvoiceReviewMessage() {
   }
 }
 
+function testInvoiceReviewKeyboard() {
+  assertDeepEqual('Invoice review main keyboard', context.buildInvoiceReviewKeyboard('token'), [
+    [{ text: 'Cancel', callback_data: 'review_cancel|token' }],
+    [{ text: 'Change', callback_data: 'review_change|token' }],
+    [{ text: 'Create PDF', callback_data: 'review_create|token' }]
+  ]);
+
+  assertDeepEqual('Invoice review change keyboard', context.buildInvoiceReviewChangeKeyboard('token'), [
+    [{ text: 'Change day', callback_data: 'review_edit_day|token' }],
+    [{ text: 'Invoice number', callback_data: 'review_edit_invoice|token' }],
+    [{ text: 'Back', callback_data: 'review_back|token' }],
+    [{ text: 'Cancel', callback_data: 'review_cancel|token' }]
+  ]);
+
+  console.log('ok - Invoice review keyboard');
+}
+
 function testInvoiceReviewDayUpdate() {
   const invoice = context.parseInvoiceRequest(
     'Invoice 17\n24/08 OFF\n25/08 05:00\n26/08 05:00',
@@ -636,19 +685,52 @@ function testInvoiceReviewInvoiceNumberUpdate() {
     invoice.invoiceNumber = 17;
     invoice.generatedInvoiceNumber = true;
 
-    context.updateInvoiceReviewInvoiceNumber(invoice, '18');
+    const changed = context.updateInvoiceReviewInvoiceNumber(invoice, '18');
     assertDeepEqual('Review invoice number edit', {
       invoiceNumber: invoice.invoiceNumber,
-      generatedInvoiceNumber: invoice.generatedInvoiceNumber
+      generatedInvoiceNumber: invoice.generatedInvoiceNumber,
+      manualInvoiceNumber: invoice.manualInvoiceNumber,
+      changed
     }, {
       invoiceNumber: 18,
-      generatedInvoiceNumber: false
+      generatedInvoiceNumber: false,
+      manualInvoiceNumber: true,
+      changed: true
+    });
+
+    const unchanged = context.updateInvoiceReviewInvoiceNumber(invoice, '18');
+    assertDeepEqual('Review same invoice number edit', {
+      invoiceNumber: invoice.invoiceNumber,
+      unchanged
+    }, {
+      invoiceNumber: 18,
+      unchanged: false
     });
 
     console.log('ok - Invoice review invoice number update');
   } finally {
     context.openInvoiceSpreadsheet = previousOpenInvoiceSpreadsheet;
   }
+}
+
+function testInvoiceReviewPendingInvoiceNumberRouting() {
+  assertDeepEqual('Invoice number reply detection', {
+    number: context.isInvoiceReviewInvoiceNumberReply('18'),
+    invoiceMessage: context.isInvoiceReviewInvoiceNumberReply('Invoice 18\n24/08 OFF')
+  }, {
+    number: true,
+    invoiceMessage: false
+  });
+
+  assertDeepEqual('New invoice request detection', {
+    rota: context.isLikelyNewInvoiceRequestMessage('Invoice 18\n24/08 OFF\n25/08 05:00'),
+    plainText: context.isLikelyNewInvoiceRequestMessage('please use the same one')
+  }, {
+    rota: true,
+    plainText: false
+  });
+
+  console.log('ok - Invoice review pending invoice number routing');
 }
 
 function testInvoiceReviewWeekShift() {
@@ -658,6 +740,7 @@ function testInvoiceReviewWeekShift() {
   );
   invoice.invoiceNumber = 17;
   invoice.generatedInvoiceNumber = true;
+  invoice.manualInvoiceNumber = false;
   invoice.indexRow = 12;
   invoice.driveFileId = 'file-id';
   invoice.driveFilename = 'invoice.pdf';
@@ -667,6 +750,7 @@ function testInvoiceReviewWeekShift() {
   assertDeepEqual('Review week shift', {
     invoiceNumber: invoice.invoiceNumber,
     generatedInvoiceNumber: invoice.generatedInvoiceNumber,
+    manualInvoiceNumber: invoice.manualInvoiceNumber,
     startDate: toIsoDate(invoice.startDate),
     endDate: toIsoDate(invoice.endDate),
     workedDays: invoice.workedDays,
@@ -677,6 +761,7 @@ function testInvoiceReviewWeekShift() {
   }, {
     invoiceNumber: null,
     generatedInvoiceNumber: true,
+    manualInvoiceNumber: false,
     startDate: '2026-08-31',
     endDate: '2026-09-06',
     workedDays: ['tue', 'sun'],
@@ -684,6 +769,18 @@ function testInvoiceReviewWeekShift() {
     indexRow: null,
     driveFileId: '',
     driveFilename: ''
+  });
+
+  invoice.invoiceNumber = 19;
+  invoice.generatedInvoiceNumber = false;
+  invoice.manualInvoiceNumber = false;
+  context.shiftInvoiceReviewWeek(invoice, 7);
+  assertDeepEqual('Generated review week shift clears previously previewed existing number', {
+    invoiceNumber: invoice.invoiceNumber,
+    manualInvoiceNumber: invoice.manualInvoiceNumber
+  }, {
+    invoiceNumber: null,
+    manualInvoiceNumber: false
   });
 
   console.log('ok - Invoice review week shift');

@@ -8,7 +8,14 @@ function resolveInvoiceNumber(spreadsheet, invoice) {
 
     if (existing) {
       if (invoice.invoiceNumber && invoice.invoiceNumber !== existing.invoiceNumber) {
-        throwInvoiceNumberConflict(existing, invoice.invoiceNumber);
+        if (!invoice.manualInvoiceNumber) {
+          throwInvoiceNumberConflict(existing, invoice.invoiceNumber);
+        }
+
+        assertInvoiceNumberAvailable(indexSheet, invoice);
+        upsertInvoiceIndexEntry(indexSheet, invoice);
+        syncLastInvoiceNumberAtLeast(invoice.invoiceNumber);
+        return;
       }
 
       invoice.invoiceNumber = existing.invoiceNumber;
@@ -55,7 +62,15 @@ function previewInvoiceNumber(spreadsheet, invoice) {
 
   if (existing) {
     if (invoice.invoiceNumber && invoice.invoiceNumber !== existing.invoiceNumber) {
-      throwInvoiceNumberConflict(existing, invoice.invoiceNumber);
+      if (!invoice.manualInvoiceNumber) {
+        throwInvoiceNumberConflict(existing, invoice.invoiceNumber);
+      }
+
+      assertInvoiceNumberAvailable(indexSheet, invoice);
+      invoice.indexRow = existing.row;
+      invoice.driveFileId = existing.driveFileId;
+      invoice.driveFilename = existing.driveFilename;
+      return;
     }
 
     invoice.invoiceNumber = existing.invoiceNumber;
